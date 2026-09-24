@@ -93,3 +93,4 @@ bluebyrd is published under the permissive **MIT License** and developed openly 
 - **Releases**: [GitHub Releases](https://github.com/byrdchermit/blue-byrd-api/releases)
 - **Author**: Byrd Chermit ([@byrdchermit](https://github.com/byrdchermit))
 - **License**: [MIT](https://github.com/byrdchermit/blue-byrd-api/blob/main/LICENSE)
+

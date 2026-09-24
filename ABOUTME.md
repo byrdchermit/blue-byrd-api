@@ -1,12 +1,12 @@
 # About Me & bluebyrd
 
-Hi there! 👋 I'm **Byrd Chermit** ([@byrdchermit](https://github.com/byrdchermit)), the author and creator of **bluebyrd**.
+Hi there! 👋 I'm [@byrdchermit](https://github.com/byrdchermit), the author and creator of **bluebyrd**.
 
 ---
 
 ## Why I Built bluebyrd
 
-As a software engineer, working with APIs is part of my everyday life. Whether developing microservices, testing REST endpoints, validating webhook deliveries, or debugging third-party integrations, an API client is an indispensable tool in my toolbox.
+Working with APIs is part of my everyday life. Whether developing microservices, testing REST endpoints, validating webhook deliveries, or debugging third-party integrations, an API client is an indispensable tool in my toolbox.
 
 However, I found myself increasingly frustrated with the direction standard desktop API clients were heading:
 - **Heavyweight overhead**: Running an extra Chromium-based desktop client consuming gigabytes of RAM just to send an occasional `GET` or `POST` request felt unnecessary.
