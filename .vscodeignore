@@ -1,0 +1,11 @@
+.vscode/**
+.git/**
+.gitignore
+**/*.map
+**/*.tsbuildinfo
+src/**
+tsconfig.json
+node_modules/**
+scratch/**
+.gemini/**
+*.log

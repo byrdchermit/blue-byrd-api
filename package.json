@@ -1,0 +1,284 @@
+{
+  "name": "blue-byrd-api",
+  "displayName": "bluebyrd",
+  "description": "A native, open-source API client for VS Code inspired by Postman.",
+  "version": "0.1.0",
+  "publisher": "byrdchermit",
+  "icon": "media/icon.svg",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/byrdchermit/blue-byrd-api"
+  },
+  "homepage": "https://github.com/byrdchermit/blue-byrd-api",
+  "bugs": {
+    "url": "https://github.com/byrdchermit/blue-byrd-api/issues"
+  },
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished",
+    "onView:blueByrdApiClientExplorer"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "bluebyrd requires workspace trust to safely execute network requests and resolve environment variables."
+    }
+  },
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "blueByrdApiClient",
+          "title": "bluebyrd",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "blueByrdApiClient": [
+        {
+          "id": "blueByrdApiClientExplorer",
+          "name": "API Client",
+          "type": "tree"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "blueByrdApiClient.openRequestPanel",
+        "title": "bluebyrd: Open API Client"
+      },
+      {
+        "command": "blueByrdApiClient.openSidebar",
+        "title": "bluebyrd: Open Sidebar"
+      },
+      {
+        "command": "blueByrdApiClient.newRequest",
+        "title": "bluebyrd: New Request",
+        "icon": "$(add)"
+      },
+      {
+        "command": "blueByrdApiClient.refreshExplorer",
+        "title": "bluebyrd: Refresh Explorer",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "blueByrdApiClient.createProfile",
+        "title": "bluebyrd: New Profile",
+        "icon": "$(add)"
+      },
+      {
+        "command": "blueByrdApiClient.createEnvironment",
+        "title": "bluebyrd: New Environment",
+        "icon": "$(add)"
+      },
+      {
+        "command": "blueByrdApiClient.createCollection",
+        "title": "bluebyrd: New Collection",
+        "icon": "$(new-folder)"
+      },
+      {
+        "command": "blueByrdApiClient.createFolder",
+        "title": "bluebyrd: New Folder",
+        "icon": "$(new-folder)"
+      },
+      {
+        "command": "blueByrdApiClient.duplicateRequest",
+        "title": "bluebyrd: Duplicate Request",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "blueByrdApiClient.deleteItem",
+        "title": "bluebyrd: Delete",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "blueByrdApiClient.clearHistory",
+        "title": "bluebyrd: Clear History",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "blueByrdApiClient.editProfile",
+        "title": "bluebyrd: Edit Profile Settings"
+      },
+      {
+        "command": "blueByrdApiClient.editEnvironment",
+        "title": "bluebyrd: Edit Environment Settings"
+      },
+      {
+        "command": "blueByrdApiClient.editCollection",
+        "title": "bluebyrd: Edit Collection Settings"
+      },
+      {
+        "command": "blueByrdApiClient.editFolder",
+        "title": "bluebyrd: Edit Folder Settings"
+      },
+      {
+        "command": "blueByrdApiClient.openHistoryPanel",
+        "title": "bluebyrd: Open History Inspector",
+        "icon": "$(history)"
+      },
+      {
+        "command": "blueByrdApiClient.importJson",
+        "title": "bluebyrd: Import JSON (Postman, OpenAPI, or Backup)",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "blueByrdApiClient.exportCollection",
+        "title": "bluebyrd: Export Collection as JSON",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "blueByrdApiClient.exportEnvironment",
+        "title": "bluebyrd: Export Environment as JSON",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "blueByrdApiClient.exportBackup",
+        "title": "bluebyrd: Export Full Workspace Backup as JSON",
+        "icon": "$(save-all)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "blueByrdApiClient.newRequest",
+          "when": "view == blueByrdApiClientExplorer",
+          "group": "navigation@1"
+        },
+        {
+          "command": "blueByrdApiClient.createCollection",
+          "when": "view == blueByrdApiClientExplorer",
+          "group": "navigation@2"
+        },
+        {
+          "command": "blueByrdApiClient.importJson",
+          "when": "view == blueByrdApiClientExplorer",
+          "group": "navigation@3"
+        },
+        {
+          "command": "blueByrdApiClient.refreshExplorer",
+          "when": "view == blueByrdApiClientExplorer",
+          "group": "navigation@4"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "blueByrdApiClient.createProfile",
+          "when": "view == blueByrdApiClientExplorer && viewItem == bluebyrd.section.profiles",
+          "group": "inline@1"
+        },
+        {
+          "command": "blueByrdApiClient.createProfile",
+          "when": "view == blueByrdApiClientExplorer && viewItem == bluebyrd.profile",
+          "group": "2_manage@1"
+        },
+        {
+          "command": "blueByrdApiClient.createEnvironment",
+          "when": "view == blueByrdApiClientExplorer && viewItem == bluebyrd.section.environments",
+          "group": "inline@1"
+        },
+        {
+          "command": "blueByrdApiClient.importJson",
+          "when": "view == blueByrdApiClientExplorer && viewItem == bluebyrd.section.environments",
+          "group": "inline@2"
+        },
+        {
+          "command": "blueByrdApiClient.createEnvironment",
+          "when": "view == blueByrdApiClientExplorer && viewItem == bluebyrd.environment",
+          "group": "2_manage@1"
+        },
+        {
+          "command": "blueByrdApiClient.exportEnvironment",
+          "when": "view == blueByrdApiClientExplorer && viewItem == bluebyrd.environment",
+          "group": "inline@2"
+        },
+        {
+          "command": "blueByrdApiClient.createCollection",
+          "when": "view == blueByrdApiClientExplorer && viewItem == bluebyrd.section.collections",
+          "group": "inline@1"
+        },
+        {
+          "command": "blueByrdApiClient.importJson",
+          "when": "view == blueByrdApiClientExplorer && viewItem == bluebyrd.section.collections",
+          "group": "inline@2"
+        },
+        {
+          "command": "blueByrdApiClient.openHistoryPanel",
+          "when": "view == blueByrdApiClientExplorer && viewItem == bluebyrd.section.history",
+          "group": "inline@1"
+        },
+        {
+          "command": "blueByrdApiClient.clearHistory",
+          "when": "view == blueByrdApiClientExplorer && viewItem == bluebyrd.section.history",
+          "group": "inline@2"
+        },
+        {
+          "command": "blueByrdApiClient.newRequest",
+          "when": "view == blueByrdApiClientExplorer && (viewItem == bluebyrd.collection || viewItem == bluebyrd.folder)",
+          "group": "inline@1"
+        },
+        {
+          "command": "blueByrdApiClient.createFolder",
+          "when": "view == blueByrdApiClientExplorer && viewItem == bluebyrd.collection",
+          "group": "inline@2"
+        },
+        {
+          "command": "blueByrdApiClient.exportCollection",
+          "when": "view == blueByrdApiClientExplorer && viewItem == bluebyrd.collection",
+          "group": "inline@3"
+        },
+        {
+          "command": "blueByrdApiClient.duplicateRequest",
+          "when": "view == blueByrdApiClientExplorer && viewItem == bluebyrd.request",
+          "group": "inline@1"
+        },
+        {
+          "command": "blueByrdApiClient.deleteItem",
+          "when": "view == blueByrdApiClientExplorer && (viewItem == bluebyrd.request || viewItem == bluebyrd.folder || viewItem == bluebyrd.collection || viewItem == bluebyrd.profile || viewItem == bluebyrd.environment || viewItem == bluebyrd.historyItem)",
+          "group": "inline@9"
+        },
+        {
+          "command": "blueByrdApiClient.editProfile",
+          "when": "view == blueByrdApiClientExplorer && viewItem == bluebyrd.profile",
+          "group": "1_settings"
+        },
+        {
+          "command": "blueByrdApiClient.editEnvironment",
+          "when": "view == blueByrdApiClientExplorer && viewItem == bluebyrd.environment",
+          "group": "1_settings"
+        },
+        {
+          "command": "blueByrdApiClient.editCollection",
+          "when": "view == blueByrdApiClientExplorer && viewItem == bluebyrd.collection",
+          "group": "1_settings"
+        },
+        {
+          "command": "blueByrdApiClient.editFolder",
+          "when": "view == blueByrdApiClientExplorer && viewItem == bluebyrd.folder",
+          "group": "1_settings"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "test": "npm run compile && node test/verify.js",
+    "package": "npx @vscode/vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.12",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.1.0",
+    "typescript": "^5.5.4"
+  }
+}
