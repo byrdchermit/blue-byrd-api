@@ -394,13 +394,22 @@ export class CommandManager {
 
     // Create Environment
     s.push(
-      vscode.commands.registerCommand('blueByrdApiClient.createEnvironment', async () => {
+      vscode.commands.registerCommand('blueByrdApiClient.createEnvironment', async (treeItem?: BlueByrdTreeItem) => {
+        let profileId: string | undefined;
+        if (treeItem?.kind === 'profile') {
+          profileId = treeItem.itemId !== 'global' ? treeItem.itemId : undefined;
+        } else if (treeItem?.parentId) {
+          profileId = treeItem.parentId !== 'global' ? treeItem.parentId : undefined;
+        } else {
+          profileId = this.stateManager.getActiveProfileId();
+        }
+
         const name = await vscode.window.showInputBox({
           prompt: 'Enter a name for the new environment',
           placeHolder: 'e.g. Staging or QA-West',
         });
         if (name && name.trim()) {
-          const result = this.stateManager.createEnvironment(name.trim());
+          const result = this.stateManager.createEnvironment(name.trim(), undefined, profileId);
           this.treeProvider.refresh();
           vscode.window.showInformationMessage(`Environment '${result.name}' created.`);
           BlueByrdSettingsPanel.createOrShow(
@@ -417,13 +426,22 @@ export class CommandManager {
 
     // Create Collection
     s.push(
-      vscode.commands.registerCommand('blueByrdApiClient.createCollection', async () => {
+      vscode.commands.registerCommand('blueByrdApiClient.createCollection', async (treeItem?: BlueByrdTreeItem) => {
+        let profileId: string | undefined;
+        if (treeItem?.kind === 'profile') {
+          profileId = treeItem.itemId !== 'global' ? treeItem.itemId : undefined;
+        } else if (treeItem?.parentId) {
+          profileId = treeItem.parentId !== 'global' ? treeItem.parentId : undefined;
+        } else {
+          profileId = this.stateManager.getActiveProfileId();
+        }
+
         const name = await vscode.window.showInputBox({
           prompt: 'Enter a name for the new collection',
           placeHolder: 'e.g. Payments API',
         });
         if (name && name.trim()) {
-          this.stateManager.createCollection(name.trim());
+          this.stateManager.createCollection(name.trim(), profileId);
           this.treeProvider.refresh();
           vscode.window.showInformationMessage(`Collection '${name.trim()}' created.`);
         }

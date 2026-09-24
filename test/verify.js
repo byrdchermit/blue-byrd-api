@@ -1222,30 +1222,43 @@ console.log('✓ Request panel script integrity & syntax validation passed');
   // Initialize Explorer Tree Provider
   const treeProvider = new BlueByrdExplorerTreeDataProvider(hierarchySM);
 
-  // 1. Verify Global Scope (activeProfileId = undefined) shows all items
-  hierarchySM.setActiveProfileId(undefined);
-  treeProvider.refresh();
+  // 1. Verify Root has Profiles and History sections
+  const rootItems = treeProvider.getChildren();
+  assert.strictEqual(rootItems.length, 2, 'Root should have 2 sections: Profiles and History');
+  const [profilesSection, historySection] = rootItems;
+  assert.strictEqual(profilesSection.label, 'Profiles');
+  assert.strictEqual(historySection.label, 'History');
 
-  const rootItemsGlobal = treeProvider.getChildren();
-  assert.strictEqual(rootItemsGlobal.length, 5, 'Root should have 5 items: scope filter, profiles, environments, collections, history');
-  assert.strictEqual(rootItemsGlobal[0].kind, 'active-filter');
-  assert(rootItemsGlobal[0].label.includes('Global'), 'Scope filter should show Global when activeProfileId is undefined');
+  // 2. Verify Profiles section contains profiles + Shared / Global
+  const profileItems = treeProvider.getChildren(profilesSection);
+  const profileLabels = profileItems.map(p => p.label);
+  assert(profileLabels.includes('Tenant Alpha'), 'Must include Tenant Alpha');
+  assert(profileLabels.includes('Tenant Beta'), 'Must include Tenant Beta');
+  assert(profileLabels.includes('Shared / Global'), 'Must include Shared / Global');
 
-  // Verify Environments Section in Global Scope
-  const envSectionGlobal = rootItemsGlobal[2];
-  const envChildrenGlobal = treeProvider.getChildren(envSectionGlobal);
-  const envNamesGlobal = envChildrenGlobal.map(c => c.label);
-  assert(envNamesGlobal.includes('Global Root'), 'Global Root environment must be present');
-  assert(envNamesGlobal.includes('Alpha Base'), 'Alpha Base environment must be present at root');
-  assert(envNamesGlobal.includes('Beta Prod'), 'Beta Prod environment must be present at root');
+  // 3. Verify Tenant Alpha owns its Environments and Collections
+  const alphaItem = profileItems.find(p => p.label === 'Tenant Alpha');
+  assert(alphaItem, 'Tenant Alpha must exist');
+  const alphaChildren = treeProvider.getChildren(alphaItem);
+  assert.strictEqual(alphaChildren.length, 2, 'Tenant Alpha must have Environments and Collections nodes');
+  const [alphaEnvsNode, alphaColsNode] = alphaChildren;
+  assert.strictEqual(alphaEnvsNode.label, 'Environments');
+  assert.strictEqual(alphaColsNode.label, 'Collections');
 
-  // Verify Parent -> Child hierarchy nesting under Alpha Base:
-  const alphaBaseItem = envChildrenGlobal.find(c => c.label === 'Alpha Base');
-  assert(alphaBaseItem, 'Alpha Base item should exist');
+  // Verify Environments nested inside Tenant Alpha
+  const alphaEnvs = treeProvider.getChildren(alphaEnvsNode);
+  const alphaEnvLabels = alphaEnvs.map(e => e.label);
+  assert(alphaEnvLabels.includes('Alpha Base'), 'Alpha Base must be in Tenant Alpha environments');
+  assert(!alphaEnvLabels.includes('Beta Prod'), 'Beta Prod must NOT be in Tenant Alpha environments');
+  assert(!alphaEnvLabels.includes('Global Root'), 'Global Root must NOT be in Tenant Alpha environments');
+
+  // Verify Parent -> Child hierarchy under Alpha Base:
+  const alphaBaseItem = alphaEnvs.find(e => e.label === 'Alpha Base');
+  assert(alphaBaseItem, 'Alpha Base must exist');
   assert.strictEqual(alphaBaseItem.children.length, 1, 'Alpha Base should have 1 child (Alpha Dev)');
   assert(alphaBaseItem.description.includes('Parent (1)'), 'Alpha Base description should indicate 1 child');
 
-  // Verify expanding Alpha Base via getChildren(alphaBaseItem) returns Alpha Dev
+  // Verify Alpha Dev nested under Alpha Base
   const alphaBaseChildren = treeProvider.getChildren(alphaBaseItem);
   assert.strictEqual(alphaBaseChildren.length, 1);
   const alphaDevItem = alphaBaseChildren[0];
@@ -1259,54 +1272,55 @@ console.log('✓ Request panel script integrity & syntax validation passed');
   assert.strictEqual(alphaFeatureItem.label, 'Alpha Feature 1');
   assert(alphaFeatureItem.description.includes('inherits: Alpha Dev'), 'Child environment should show parent in description');
 
-  // 2. Switch Active Profile to Tenant Alpha
+  // Verify Collections nested inside Tenant Alpha
+  const alphaCols = treeProvider.getChildren(alphaColsNode);
+  const alphaColLabels = alphaCols.map(c => c.label);
+  assert(alphaColLabels.includes('Alpha Orders API'), 'Alpha Orders API must be in Tenant Alpha collections');
+  assert(!alphaColLabels.includes('Beta Inventory API'), 'Beta Inventory API must NOT be in Tenant Alpha collections');
+  assert(!alphaColLabels.includes('Global Shared Library'), 'Global Shared Library must NOT be in Tenant Alpha collections');
+
+  // 4. Verify Tenant Beta owns its Environments and Collections
+  const betaItem = profileItems.find(p => p.label === 'Tenant Beta');
+  assert(betaItem, 'Tenant Beta must exist');
+  const betaChildren = treeProvider.getChildren(betaItem);
+  const [betaEnvsNode, betaColsNode] = betaChildren;
+
+  const betaEnvs = treeProvider.getChildren(betaEnvsNode);
+  const betaEnvLabels = betaEnvs.map(e => e.label);
+  assert(betaEnvLabels.includes('Beta Prod'), 'Beta Prod must be in Tenant Beta');
+  assert(!betaEnvLabels.includes('Alpha Base'), 'Alpha Base must NOT be in Tenant Beta');
+
+  const betaCols = treeProvider.getChildren(betaColsNode);
+  const betaColLabels = betaCols.map(c => c.label);
+  assert(betaColLabels.includes('Beta Inventory API'), 'Beta Inventory API must be in Tenant Beta');
+  assert(!betaColLabels.includes('Alpha Orders API'), 'Alpha Orders API must NOT be in Tenant Beta');
+
+  // 5. Verify Shared / Global owns unassigned/global Environments and Collections
+  const globalItem = profileItems.find(p => p.label === 'Shared / Global');
+  assert(globalItem, 'Shared / Global must exist');
+  const [globalEnvsNode, globalColsNode] = treeProvider.getChildren(globalItem);
+
+  const globalEnvs = treeProvider.getChildren(globalEnvsNode);
+  assert(globalEnvs.some(e => e.label === 'Global Root'), 'Global Root must be in Shared / Global');
+  assert(!globalEnvs.some(e => e.label === 'Alpha Base'), 'Alpha Base must NOT be in Shared / Global');
+
+  const globalCols = treeProvider.getChildren(globalColsNode);
+  assert(globalCols.some(c => c.label === 'Global Shared Library'), 'Global Shared Library must be in Shared / Global');
+  assert(!globalCols.some(c => c.label === 'Alpha Orders API'), 'Alpha Orders API must NOT be in Shared / Global');
+
+  // 6. Verify Active Profile & Active Environment Badges
   hierarchySM.setActiveProfileId(profAlpha.id);
   hierarchySM.setActiveEnvironmentName('Alpha Dev');
   treeProvider.refresh();
 
-  const rootItemsAlpha = treeProvider.getChildren();
-  assert(rootItemsAlpha[0].label.includes('Tenant Alpha'), 'Scope filter label must show active profile name');
+  const refreshedProfiles = treeProvider.getChildren(treeProvider.getChildren()[0]);
+  const activeAlphaItem = refreshedProfiles.find(p => p.label === 'Tenant Alpha');
+  assert(activeAlphaItem.description.includes('✔ Active'), 'Active profile must display ✔ Active Scope badge');
 
-  // Check Environments filtered by Tenant Alpha
-  const envSectionAlpha = rootItemsAlpha[2];
-  const envChildrenAlpha = treeProvider.getChildren(envSectionAlpha);
-  const alphaEnvNames = envChildrenAlpha.map(c => c.label);
-  assert(alphaEnvNames.includes('Global Root'), 'Global Root must remain visible when filtered by profile');
-  assert(alphaEnvNames.includes('Alpha Base'), 'Alpha Base must be visible under Tenant Alpha');
-  assert(!alphaEnvNames.includes('Beta Prod'), 'Beta Prod must be hidden under Tenant Alpha scope');
-
-  // Check Active Environment Indicator
-  const alphaBaseUnderAlpha = envChildrenAlpha.find(c => c.label === 'Alpha Base');
-  const devUnderAlpha = treeProvider.getChildren(alphaBaseUnderAlpha)[0];
-  assert(devUnderAlpha.description.includes('✔ Active'), 'Active environment Alpha Dev must show ✔ Active badge');
-
-  // Check Collections filtered by Tenant Alpha
-  const colSectionAlpha = rootItemsAlpha[3];
-  const colChildrenAlpha = treeProvider.getChildren(colSectionAlpha);
-  const alphaColNames = colChildrenAlpha.map(c => c.label);
-  assert(alphaColNames.includes('Global Shared Library'), 'Global collection must remain visible under Tenant Alpha');
-  assert(alphaColNames.includes('Alpha Orders API'), 'Alpha Orders API collection must be visible');
-  assert(!alphaColNames.includes('Beta Inventory API'), 'Beta Inventory API collection must be hidden under Tenant Alpha scope');
-
-  // 3. Switch Active Profile to Tenant Beta
-  hierarchySM.setActiveProfileId(profBeta.id);
-  treeProvider.refresh();
-
-  const rootItemsBeta = treeProvider.getChildren();
-  assert(rootItemsBeta[0].label.includes('Tenant Beta'), 'Scope filter label must show Tenant Beta');
-
-  const envSectionBeta = rootItemsBeta[2];
-  const envChildrenBeta = treeProvider.getChildren(envSectionBeta);
-  const betaEnvNames = envChildrenBeta.map(c => c.label);
-  assert(betaEnvNames.includes('Beta Prod'), 'Beta Prod must be visible under Tenant Beta');
-  assert(!betaEnvNames.includes('Alpha Base'), 'Alpha Base must be hidden under Tenant Beta scope');
-
-  const colSectionBeta = rootItemsBeta[3];
-  const colChildrenBeta = treeProvider.getChildren(colSectionBeta);
-  const betaColNames = colChildrenBeta.map(c => c.label);
-  assert(betaColNames.includes('Global Shared Library'), 'Global collection must remain visible under Tenant Beta');
-  assert(betaColNames.includes('Beta Inventory API'), 'Beta Inventory API collection must be visible');
-  assert(!betaColNames.includes('Alpha Orders API'), 'Alpha Orders API collection must be hidden under Tenant Beta scope');
+  const refreshedAlphaEnvs = treeProvider.getChildren(treeProvider.getChildren(activeAlphaItem)[0]);
+  const refreshedBase = refreshedAlphaEnvs.find(e => e.label === 'Alpha Base');
+  const refreshedDev = treeProvider.getChildren(refreshedBase)[0];
+  assert(refreshedDev.description.includes('✔ Active'), 'Active environment Alpha Dev must show ✔ Active badge');
 
   console.log('✓ Profile-Scoped Workspace & Visual Parent -> Child Environment Tree Nesting verified');
 

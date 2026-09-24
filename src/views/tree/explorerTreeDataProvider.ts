@@ -35,16 +35,14 @@ export class BlueByrdExplorerTreeDataProvider
   public getChildren(element?: BlueByrdTreeItem): BlueByrdTreeItem[] {
     if (!element) {
       return [
-        this.buildScopeFilterItem(),
         this.buildProfilesSection(),
-        this.buildEnvironmentsSection(),
-        this.buildCollectionsSection(),
         this.buildHistorySection(),
       ];
     }
 
     if (
       element.kind === 'section' ||
+      element.kind === 'profile' ||
       element.kind === 'collection' ||
       element.kind === 'folder' ||
       element.kind === 'environment'
@@ -55,74 +53,164 @@ export class BlueByrdExplorerTreeDataProvider
     return [];
   }
 
-  private buildScopeFilterItem(): BlueByrdTreeItem {
-    const activeProfileId = this.state.activeProfileId;
-    const activeProfile = activeProfileId && activeProfileId !== 'all'
-      ? this.state.profiles.find((p) => p.id === activeProfileId || p.name === activeProfileId)
-      : undefined;
-
-    const label = activeProfile ? `Scope: ${activeProfile.name}` : 'Scope: All Profiles (Global)';
-    const desc = activeProfile ? 'Active Profile Scope • click to switch' : 'Global Scope • click to switch';
-
-    return new BlueByrdTreeItem(
-      label,
-      'active-filter',
-      'active-scope-filter',
-      undefined,
-      undefined,
-      [],
-      {
-        title: 'Switch Active Profile Scope',
-        command: 'blueByrdApiClient.switchActiveProfile',
-        arguments: [],
-      },
-      desc
-    );
-  }
-
   private buildProfilesSection(): BlueByrdTreeItem {
     const activeProfileId = this.state.activeProfileId;
     const profileItems = this.state.profiles.map((p) => {
       const isActive = activeProfileId === p.id || activeProfileId === p.name;
-      const desc = isActive ? '✔ Active Scope' : 'profile';
+      const desc = isActive ? '✔ Active Scope' : undefined;
+
+      const envNode = this.buildProfileEnvironmentsNode(p.id);
+      const colNode = this.buildProfileCollectionsNode(p.id);
+      const children = [envNode, colNode];
+
       const item = new BlueByrdTreeItem(
         p.name,
         'profile',
         p.id,
         undefined,
         undefined,
-        [],
+        children,
         {
           title: 'Edit Profile Settings',
           command: 'blueByrdApiClient.editProfile',
           arguments: [{ id: p.id, name: p.name }],
         },
-        desc
+        desc,
+        isActive ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed
       );
+
       if (isActive) {
         item.iconPath = new vscode.ThemeIcon('pass');
       }
       return item;
     });
 
+    // Add Shared / Global pseudo-profile node for items available across all profiles
+    const globalEnvNode = this.buildProfileEnvironmentsNode('global');
+    const globalColNode = this.buildProfileCollectionsNode('global');
+    const globalChildren = [globalEnvNode, globalColNode];
+    const hasGlobalItems =
+      (globalEnvNode.children && globalEnvNode.children.length > 0) ||
+      (globalColNode.children && globalColNode.children.length > 0);
+
+    const globalItem = new BlueByrdTreeItem(
+      'Shared / Global',
+      'profile',
+      'global',
+      undefined,
+      undefined,
+      globalChildren,
+      undefined,
+      'All Profiles',
+      hasGlobalItems ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed
+    );
+    globalItem.iconPath = new vscode.ThemeIcon('globe');
+    globalItem.contextValue = 'bluebyrd.profile.global';
+
+    profileItems.push(globalItem);
+
     const section = new BlueByrdTreeItem('Profiles', 'section', 'section-profiles', undefined, undefined, profileItems);
+    section.collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
     return section;
   }
 
-  private buildEnvironmentsSection(): BlueByrdTreeItem {
-    const activeProfileId = this.state.activeProfileId;
-    const isProfileScoped = !!activeProfileId && activeProfileId !== 'all';
-    const activeEnvName = this.state.activeEnvironmentName;
+  private buildProfileEnvironmentsNode(profileId: string): BlueByrdTreeItem {
+    const isGlobal = profileId === 'global';
+    const allEnvs = Object.entries(this.state.environments);
+    const profileEnvs = isGlobal
+      ? allEnvs.filter(([, e]) => !e.profileId || e.profileId === 'global')
+      : allEnvs.filter(([, e]) => e.profileId === profileId);
 
-    // Filter environments if a profile is actively selected
-    const allEnvEntries = Object.entries(this.state.environments);
-    const filteredEnvEntries = isProfileScoped
-      ? allEnvEntries.filter(([, env]) => !env.profileId || env.profileId === 'global' || env.profileId === activeProfileId)
-      : allEnvEntries;
+    const envItems = this.buildEnvironmentTree(profileEnvs, this.state.activeEnvironmentName, profileId);
+    const count = profileEnvs.length;
 
+    const envNode = new BlueByrdTreeItem(
+      'Environments',
+      'section',
+      `${profileId}-environments`,
+      profileId,
+      undefined,
+      envItems,
+      undefined,
+      `${count} ${count === 1 ? 'env' : 'envs'}`,
+      count > 0 ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed
+    );
+    envNode.iconPath = new vscode.ThemeIcon('server-environment');
+    envNode.contextValue = 'bluebyrd.section.environments';
+    return envNode;
+  }
+
+  private buildProfileCollectionsNode(profileId: string): BlueByrdTreeItem {
+    const isGlobal = profileId === 'global';
+    const allCols = this.state.collections;
+    const profileCols = isGlobal
+      ? allCols.filter((c) => !c.profileId || c.profileId === 'global')
+      : allCols.filter((c) => c.profileId === profileId);
+
+    const colItems = profileCols.map((col) => {
+      // Build folders
+      const folderItems = col.folders.map((folder) => {
+        const reqItems = folder.requests.map((req) => this.buildRequestItem(req, col.name, folder.name, col.id, folder.id));
+        return new BlueByrdTreeItem(
+          folder.name,
+          'folder',
+          folder.id,
+          col.id,
+          undefined,
+          reqItems,
+          {
+            title: 'Edit Folder Settings',
+            command: 'blueByrdApiClient.editFolder',
+            arguments: [{ collection: col.name, folder: folder.name, collectionId: col.id, folderId: folder.id }],
+          }
+        );
+      });
+
+      // Build root requests (which do not belong to any folder)
+      const rootReqItems = col.requests.map((req) => this.buildRequestItem(req, col.name, undefined, col.id));
+      const children = [...folderItems, ...rootReqItems];
+
+      return new BlueByrdTreeItem(
+        col.name,
+        'collection',
+        col.id,
+        profileId,
+        undefined,
+        children,
+        {
+          title: 'Edit Collection Settings',
+          command: 'blueByrdApiClient.editCollection',
+          arguments: [{ id: col.id, name: col.name }],
+        },
+        `${children.length} ${children.length === 1 ? 'item' : 'items'}`
+      );
+    });
+
+    const count = profileCols.length;
+    const colNode = new BlueByrdTreeItem(
+      'Collections',
+      'section',
+      `${profileId}-collections`,
+      profileId,
+      undefined,
+      colItems,
+      undefined,
+      `${count} ${count === 1 ? 'collection' : 'collections'}`,
+      count > 0 ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed
+    );
+    colNode.iconPath = new vscode.ThemeIcon('library');
+    colNode.contextValue = 'bluebyrd.section.collections';
+    return colNode;
+  }
+
+  private buildEnvironmentTree(
+    envEntries: Array<[string, any]>,
+    activeEnvName?: string,
+    parentProfileId?: string
+  ): BlueByrdTreeItem[] {
     const entryMapByName = new Map<string, { name: string; env: any }>();
     const entryMapById = new Map<string, { name: string; env: any }>();
-    for (const [name, env] of filteredEnvEntries) {
+    for (const [name, env] of envEntries) {
       entryMapByName.set(name, { name, env });
       if (env.id) {
         entryMapById.set(env.id, { name, env });
@@ -132,11 +220,11 @@ export class BlueByrdExplorerTreeDataProvider
     const parentMap = new Map<string, string>(); // child name -> parent name
     const childrenMap = new Map<string, Array<{ name: string; env: any }>>(); // parent name -> child entries
 
-    for (const [name] of filteredEnvEntries) {
+    for (const [name] of envEntries) {
       childrenMap.set(name, []);
     }
 
-    for (const [name, env] of filteredEnvEntries) {
+    for (const [name, env] of envEntries) {
       if (env.inheritsFrom) {
         const parentEntry = entryMapById.get(env.inheritsFrom) || entryMapByName.get(env.inheritsFrom);
         if (parentEntry && parentEntry.name !== name) {
@@ -160,7 +248,7 @@ export class BlueByrdExplorerTreeDataProvider
       }
     }
 
-    const rootEntries = filteredEnvEntries.filter(([name]) => !parentMap.has(name));
+    const rootEntries = envEntries.filter(([name]) => !parentMap.has(name));
 
     const buildEnvItem = (name: string, env: any, parentName?: string): BlueByrdTreeItem => {
       const childEntries = childrenMap.get(name) || [];
@@ -183,7 +271,7 @@ export class BlueByrdExplorerTreeDataProvider
         name,
         'environment',
         env.id,
-        undefined,
+        parentProfileId,
         undefined,
         childTreeItems,
         {
@@ -203,68 +291,7 @@ export class BlueByrdExplorerTreeDataProvider
       return item;
     };
 
-    const envItems = rootEntries.map(([name, env]) => buildEnvItem(name, env));
-    const section = new BlueByrdTreeItem('Environments', 'section', 'section-environments', undefined, undefined, envItems);
-    return section;
-  }
-
-  private buildCollectionsSection(): BlueByrdTreeItem {
-    const activeProfileId = this.state.activeProfileId;
-    const isProfileScoped = !!activeProfileId && activeProfileId !== 'all';
-
-    const filteredCollections = isProfileScoped
-      ? this.state.collections.filter((col) => !col.profileId || col.profileId === 'global' || col.profileId === activeProfileId)
-      : this.state.collections;
-
-    const colItems = filteredCollections.map((col) => {
-      // Build folders
-      const folderItems = col.folders.map((folder) => {
-        const reqItems = folder.requests.map((req) => this.buildRequestItem(req, col.name, folder.name, col.id, folder.id));
-        return new BlueByrdTreeItem(
-          folder.name,
-          'folder',
-          folder.id,
-          col.id,
-          undefined,
-          reqItems,
-          {
-            title: 'Edit Folder Settings',
-            command: 'blueByrdApiClient.editFolder',
-            arguments: [{ collection: col.name, folder: folder.name, collectionId: col.id, folderId: folder.id }],
-          }
-        );
-      });
-
-      // Build root requests (which do not belong to any folder)
-      const rootReqItems = col.requests.map((req) => this.buildRequestItem(req, col.name, undefined, col.id));
-
-      const children = [...folderItems, ...rootReqItems];
-
-      let colDesc = `${children.length} ${children.length === 1 ? 'item' : 'items'}`;
-      if (col.profileId && col.profileId !== 'global') {
-        const prof = this.state.profiles.find((p) => p.id === col.profileId || p.name === col.profileId);
-        if (prof) {
-          colDesc += ` • [Profile: ${prof.name}]`;
-        }
-      }
-
-      return new BlueByrdTreeItem(
-        col.name,
-        'collection',
-        col.id,
-        undefined,
-        undefined,
-        children,
-        {
-          title: 'Edit Collection Settings',
-          command: 'blueByrdApiClient.editCollection',
-          arguments: [{ id: col.id, name: col.name }],
-        },
-        colDesc
-      );
-    });
-
-    return new BlueByrdTreeItem('Collections', 'section', 'section-collections', undefined, undefined, colItems);
+    return rootEntries.map(([name, env]) => buildEnvItem(name, env));
   }
 
   private buildHistorySection(): BlueByrdTreeItem {

@@ -63,6 +63,7 @@ export class BlueByrdStateManager {
             baseUrl: 'https://jsonplaceholder.typicode.com',
             userId: '1',
           },
+          profileId: 'profile-dev',
         },
         Dev: {
           id: 'env-dev',
@@ -72,6 +73,8 @@ export class BlueByrdStateManager {
             baseUrl: 'https://dev.api.example.com',
             userId: '100',
           },
+          inheritsFrom: 'Local',
+          profileId: 'profile-dev',
         },
         Prod: {
           id: 'env-prod',
@@ -80,12 +83,14 @@ export class BlueByrdStateManager {
           variables: {
             baseUrl: 'https://api.example.com',
           },
+          profileId: 'profile-prod',
         },
       },
       collections: [
         {
           id: 'col-demo',
           name: 'Demo Collection',
+          profileId: 'profile-dev',
           folders: [
             {
               id: 'folder-todos',
@@ -152,7 +157,7 @@ export class BlueByrdStateManager {
         },
       ],
       history: [],
-      activeProfileId: undefined,
+      activeProfileId: 'profile-dev',
       activeEnvironmentName: 'Local',
     };
   }

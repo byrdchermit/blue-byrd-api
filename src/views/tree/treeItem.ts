@@ -10,14 +10,21 @@ export class BlueByrdTreeItem extends vscode.TreeItem {
     public readonly requestContext?: RequestContext,
     public children: BlueByrdTreeItem[] = [],
     command?: vscode.Command,
-    customDescription?: string
+    customDescription?: string,
+    defaultCollapsibleState?: vscode.TreeItemCollapsibleState
   ) {
     const isExpandable =
-      kind === 'section' || kind === 'collection' || kind === 'folder' || (kind === 'environment' && children.length > 0);
+      kind === 'section' ||
+      kind === 'profile' ||
+      kind === 'collection' ||
+      kind === 'folder' ||
+      (kind === 'environment' && children.length > 0);
 
     super(
       label,
-      isExpandable
+      defaultCollapsibleState !== undefined
+        ? defaultCollapsibleState
+        : isExpandable
         ? (kind === 'section' || (kind === 'environment' && children.length > 0)
             ? vscode.TreeItemCollapsibleState.Expanded
             : vscode.TreeItemCollapsibleState.Collapsed)
@@ -40,7 +47,7 @@ export class BlueByrdTreeItem extends vscode.TreeItem {
       }
       this.tooltip = `Active Profile Scope: ${label}\nClick to switch profile scope.`;
     } else if (kind === 'section') {
-      this.collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
+      this.collapsibleState = defaultCollapsibleState ?? vscode.TreeItemCollapsibleState.Expanded;
       if (label === 'Profiles') {
         this.iconPath = new vscode.ThemeIcon('account');
         this.contextValue = 'bluebyrd.section.profiles';
@@ -55,7 +62,8 @@ export class BlueByrdTreeItem extends vscode.TreeItem {
         this.contextValue = 'bluebyrd.section.history';
       }
     } else if (kind === 'profile') {
-      this.iconPath = new vscode.ThemeIcon('person');
+      this.iconPath = itemId === 'global' ? new vscode.ThemeIcon('globe') : new vscode.ThemeIcon('person');
+      this.contextValue = itemId === 'global' ? 'bluebyrd.profile.global' : 'bluebyrd.profile';
       if (customDescription === undefined) {
         this.description = 'profile';
       }
