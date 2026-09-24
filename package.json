@@ -4,7 +4,7 @@
   "description": "A native, open-source API client for VS Code inspired by Postman.",
   "version": "0.1.0",
   "publisher": "byrdchermit",
-  "icon": "media/icon.svg",
+  "icon": "media/icon.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/byrdchermit/blue-byrd-api"
