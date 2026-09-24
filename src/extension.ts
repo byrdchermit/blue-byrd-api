@@ -43,16 +43,35 @@ export function activate(context: vscode.ExtensionContext): void {
       console.warn('[bluebyrd] Background update check error:', err?.message);
     });
 
-    // 5. Status Bar Item
+    // 5. Dynamic Status Bar Item (Context & Scope Indicator)
     const statusBarItem = vscode.window.createStatusBarItem(
       vscode.StatusBarAlignment.Right,
       100
     );
-    statusBarItem.text = '$(symbol-structure) bluebyrd';
-    statusBarItem.tooltip = 'Open bluebyrd';
-    statusBarItem.command = 'blueByrdApiClient.newRequest';
+
+    const updateStatusBar = () => {
+      const state = stateManager.getState();
+      const activeProfile = state.activeProfileId && state.activeProfileId !== 'all'
+        ? stateManager.getProfile(state.activeProfileId)
+        : undefined;
+      const profileLabel = activeProfile ? activeProfile.name : 'Global';
+      const envLabel = state.activeEnvironmentName || Object.keys(state.environments)[0] || 'None';
+
+      statusBarItem.text = `$(account) ${profileLabel} $(globe) ${envLabel}`;
+      statusBarItem.tooltip = `Active Profile Scope: ${profileLabel}\nActive Environment: ${envLabel}\nClick to switch profile or environment context`;
+      statusBarItem.command = 'blueByrdApiClient.switchContext';
+    };
+
+    updateStatusBar();
     statusBarItem.show();
     context.subscriptions.push(statusBarItem);
+
+    // Keep status bar synchronized on any explorer / context refresh
+    context.subscriptions.push(
+      explorerProvider.onDidChangeTreeData(() => {
+        updateStatusBar();
+      })
+    );
 
     console.log('[bluebyrd] Extension activated successfully.');
   } catch (error) {

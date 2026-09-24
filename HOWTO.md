@@ -58,24 +58,30 @@ Once installed, bluebyrd adds an icon to your VS Code **Activity Bar** (left sid
 
 ## 3. Profiles & Environments
 
-bluebyrd features a two-level configuration system: **Profiles** and **Environments**.
+bluebyrd features an advanced multi-tier configuration system: **Profiles**, **Hierarchical Environments**, and **Profile Scopes**.
 
 ### Profiles
-A **Profile** represents global configurations that span across multiple environments (such as default client IDs, global authorization configurations, or organizational base URLs).
+A **Profile** represents global context that can own or scope environments and collections (such as specific customer tenants, microservice domains, or organizational accounts).
 
-### Environments & Parent Inheritance
-An **Environment** represents a specific target (such as `Localhost`, `Dev`, `Staging`, or `Production`).
+- **Active Profile Scope**: Click the top item in the sidebar (`Scope: <Profile>` or `Scope: All Profiles (Global)`) or the status bar indicator at the bottom to filter your sidebar to display only items relevant to that profile.
+- **Shared / Global Resources**: Items marked as `Global / Shared` remain visible across all profiles, allowing you to reuse common collections or global base environments everywhere.
 
-- **Parent Environment (`inheritsFrom`)**: An environment can specify a parent environment. This allows you to define shared variables in a base environment (e.g. `Global AWS`) and override only specific hostnames or ports in child environments (e.g. `Dev Sandbox`).
+### Environments & Visual Parent &rarr; Child Nesting
+An **Environment** represents a specific deployment target (such as `Base`, `Dev`, `Staging`, or `Production`).
 
-### Creating a Profile or Environment
+- **Hierarchical Visual Nesting**: When an environment sets a **Parent Environment** (`inheritsFrom`), bluebyrd automatically nests the child environment directly beneath the parent in the sidebar explorer tree with collapsible expansion chevrons, parent badges (`Parent (N)`), and child badges (`inherits: <parent>`).
+- **Multi-Level Inheritance**: Inheritance works recursively (e.g. `Base` &rarr; `Staging` &rarr; `Staging-Feature`). Child environments inherit all parent variables and headers while selectively overriding specific keys or base URLs.
+- **Active Environment Indicator**: The active environment displays a `✔ Active` badge in the sidebar. You can set any environment as active via its inline checkmark button or right-click context menu.
+
+### Creating & Scoping Profiles and Environments
 1. **From the Sidebar**: Hover over the **Profiles** or **Environments** header in the sidebar and click the **`+`** icon.
 2. **From the Command Palette**: Press `Ctrl+Shift+P` (or `Cmd+Shift+P`), type `bluebyrd: New Profile` or `bluebyrd: New Environment`, and press Enter.
 3. The editor tab opens automatically, allowing you to define:
    - Key-value variable pairs.
    - Default headers.
    - Authentication settings.
-   - Parent environment (for environments).
+   - **Parent Environment**: Select any environment to inherit from.
+   - **Profile Scope**: Associate the environment with a specific profile or mark it as `Global / Shared (All Profiles)`.
 
 ---
 

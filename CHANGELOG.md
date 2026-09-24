@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Visual Parent &rarr; Child Environment Tree Nesting**:
+  - Environments inheriting from a parent environment via `inheritsFrom` are now rendered nested directly beneath their parent in the sidebar explorer tree.
+  - Multi-level recursive nesting support with cycle-safe ancestry protection.
+  - Parent environments display expansion chevrons and badges indicating child count (`Parent (N)`), while child environments display inheritance tags (`inherits: <parent>`).
+  - Active environment visual indicator (`✔ Active`) and pass icon.
+- **Profile-Scoped Workspaces & Active Scope Filter**:
+  - Top-level active profile switcher (`Scope: <Profile>` / `Scope: All Profiles (Global)`) filters the sidebar to show only that profile's environments and collections.
+  - Environments and Collections can now be scoped to a specific Profile or marked `Global / Shared (All Profiles)`.
+  - Collections remain environment-agnostic at the profile level so requests can run across Dev, Staging, and Prod without duplication.
+  - Context menu and command palette actions to switch profile scope (`bluebyrd: Switch Active Profile Scope`), assign scope (`bluebyrd: Assign Profile Scope...`), and set active environments directly from tree items.
+- **Dynamic Context Status Bar Item**:
+  - Status bar item displaying `$(account) [Profile] $(globe) [Environment]`.
+  - Clicking the status bar item opens a quick switcher to seamlessly toggle profile scope or active environment.
+  - Automatically synchronizes with explorer tree updates.
+
 ### Planned
 - Pre-request and post-request test assertion scripting.
 - Git-backed environment and collection synchronization (`.bluebyrd/` workspace configs).

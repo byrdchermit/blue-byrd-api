@@ -6,7 +6,8 @@ export function getSettingsPanelHtml(
   item: Profile | EnvironmentConfig | Collection | CollectionFolder | undefined,
   displayName: string,
   collectionName?: string,
-  allEnvironments?: Array<{ id: string; name: string }>
+  allEnvironments?: Array<{ id: string; name: string }>,
+  allProfiles?: Array<{ id: string; name: string }>
 ): string {
   const isProfile = target === 'profile';
   const isEnv = target === 'environment';
@@ -368,7 +369,7 @@ export function getSettingsPanelHtml(
     </header>
 
     ${isEnv ? `
-    <!-- Environment Base URL & Parent Banner -->
+    <!-- Environment Base URL, Parent & Profile Scope Banner -->
     <div class="env-url-banner">
       <div style="display: flex; gap: 12px; flex-wrap: wrap;">
         <div style="flex: 2; min-width: 240px;">
@@ -382,7 +383,7 @@ export function getSettingsPanelHtml(
           />
           <span class="help-hint">Available as {{baseUrl}} across requests</span>
         </div>
-        <div style="flex: 1; min-width: 200px;">
+        <div style="flex: 1; min-width: 180px;">
           <label for="env-parent">Parent Environment</label>
           <select id="env-parent" class="env-url-input" style="height: 32px; cursor: pointer;">
             <option value="">None (Root Environment)</option>
@@ -392,6 +393,34 @@ export function getSettingsPanelHtml(
               .join('')}
           </select>
           <span class="help-hint">Inherits variables and headers from parent</span>
+        </div>
+        <div style="flex: 1; min-width: 180px;">
+          <label for="env-profile">Profile Scope</label>
+          <select id="env-profile" class="env-url-input" style="height: 32px; cursor: pointer;">
+            <option value="">Global / Shared (All Profiles)</option>
+            ${(allProfiles || [])
+              .map(p => `<option value="${escapeHtml(p.id)}" ${p.id === (item as any)?.profileId ? 'selected' : ''}>${escapeHtml(p.name)}</option>`)
+              .join('')}
+          </select>
+          <span class="help-hint">Scope to profile or share globally</span>
+        </div>
+      </div>
+    </div>
+    ` : ''}
+
+    ${isCol ? `
+    <!-- Collection Profile Scope Banner -->
+    <div class="env-url-banner">
+      <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+        <div style="flex: 1; min-width: 200px;">
+          <label for="col-profile">Profile Scope</label>
+          <select id="col-profile" class="env-url-input" style="height: 32px; cursor: pointer;">
+            <option value="">Global / Shared (All Profiles)</option>
+            ${(allProfiles || [])
+              .map(p => `<option value="${escapeHtml(p.id)}" ${p.id === (item as any)?.profileId ? 'selected' : ''}>${escapeHtml(p.name)}</option>`)
+              .join('')}
+          </select>
+          <span class="help-hint">Scope this collection to a specific profile or share across all profiles</span>
         </div>
       </div>
     </div>
@@ -663,6 +692,8 @@ export function getSettingsPanelHtml(
           const baseUrl = baseUrlInput ? baseUrlInput.value.trim() : undefined;
           const envParentSelect = document.getElementById('env-parent');
           const inheritsFrom = envParentSelect ? envParentSelect.value.trim() || undefined : undefined;
+          const profileScopeSelect = document.getElementById('env-profile') || document.getElementById('col-profile');
+          const profileId = profileScopeSelect ? profileScopeSelect.value.trim() || undefined : undefined;
           const authValues = extractAuthValues();
           const inheritCheck = document.getElementById('auth-inherit');
           const inheritAuth = inheritCheck ? inheritCheck.checked : true;
@@ -696,6 +727,7 @@ export function getSettingsPanelHtml(
               name,
               baseUrl,
               inheritsFrom,
+              profileId,
               authType: authValues.type,
               token: authValues.token,
               headerName: authValues.headerName,

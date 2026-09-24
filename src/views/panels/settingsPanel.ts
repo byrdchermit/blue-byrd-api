@@ -96,7 +96,11 @@ export class BlueByrdSettingsPanel {
       id: env.id,
       name,
     }));
-    this.panel.webview.html = getSettingsPanelHtml(target, item, name, collectionName, allEnvironments);
+    const allProfiles = this.stateManager.getProfiles().map((p) => ({
+      id: p.id,
+      name: p.name,
+    }));
+    this.panel.webview.html = getSettingsPanelHtml(target, item, name, collectionName, allEnvironments, allProfiles);
 
     this.panel.onDidDispose(
       () => {
@@ -153,6 +157,7 @@ export class BlueByrdSettingsPanel {
     name: string;
     baseUrl?: string;
     inheritsFrom?: string;
+    profileId?: string;
     authType: 'none' | 'bearer' | 'apiKey' | 'oauth2' | 'basic';
     token?: string;
     headerName?: string;
@@ -213,6 +218,7 @@ export class BlueByrdSettingsPanel {
         headers: payload.headers,
         inheritsFrom: payload.inheritsFrom,
         notes: payload.notes,
+        profileId: payload.profileId || undefined,
       };
       this.stateManager.saveEnvironment(nextName, updated, this.originalName);
     } else if (this.target === 'collection') {
@@ -223,6 +229,7 @@ export class BlueByrdSettingsPanel {
         existing.headers = payload.headers;
         existing.inheritsFrom = payload.inheritsFrom;
         existing.notes = payload.notes;
+        existing.profileId = payload.profileId || undefined;
         existing.auth = {
           inheritFromProfile: payload.inheritAuth !== false,
           inheritFromEnvironment: payload.inheritAuth !== false,

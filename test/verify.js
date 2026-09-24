@@ -48,6 +48,7 @@ const { VariableService } = require(path.join(repoDist, 'services/variableServic
 const { AuthService } = require(path.join(repoDist, 'services/authService'));
 const { ImportExportService } = require(path.join(repoDist, 'services/importExportService'));
 const { UpdateService } = require(path.join(repoDist, 'services/updateService'));
+const { BlueByrdExplorerTreeDataProvider } = require(path.join(repoDist, 'views/tree/explorerTreeDataProvider'));
 
 console.log('--- Starting bluebyrd Verification Suite ---');
 
@@ -1178,7 +1179,138 @@ console.log('✓ Request panel script integrity & syntax validation passed');
 
   console.log('✓ Webview XSS & prototype pollution security hardening verified');
 
-  console.log('\nAll 32 verification test suites passed successfully! 🎉');
+  // Test 33: Profile-Scoped Workspace & Visual Parent -> Child Environment Tree Nesting
+  const hierarchyStorage = new Map();
+  const hierarchyContext = {
+    workspaceState: {
+      get: (k) => hierarchyStorage.get(k),
+      update: (k, v) => { hierarchyStorage.set(k, v); return Promise.resolve(); }
+    }
+  };
+  const hierarchySM = new BlueByrdStateManager(hierarchyContext);
+
+  // Setup Profiles: Tenant Alpha (profile-alpha) and Tenant Beta (profile-beta)
+  const profAlpha = hierarchySM.createProfile('Tenant Alpha');
+  const profBeta = hierarchySM.createProfile('Tenant Beta');
+
+  // Setup Environments:
+  // - Global Root (no profileId)
+  // - Alpha Base (scoped to profAlpha.id)
+  // - Alpha Dev (scoped to profAlpha.id, inheritsFrom Alpha Base)
+  // - Alpha Dev Feature 1 (scoped to profAlpha.id, inheritsFrom Alpha Dev)
+  // - Beta Prod (scoped to profBeta.id)
+  hierarchySM.createEnvironment('Global Root', 'https://api.global.com');
+  const alphaBase = hierarchySM.createEnvironment('Alpha Base', 'https://alpha.example.com', profAlpha.id);
+  const alphaDev = hierarchySM.createEnvironment('Alpha Dev', 'https://dev.alpha.example.com', profAlpha.id);
+  alphaDev.env.inheritsFrom = alphaBase.env.id;
+  hierarchySM.saveEnvironment('Alpha Dev', alphaDev.env);
+
+  const alphaFeature = hierarchySM.createEnvironment('Alpha Feature 1', 'https://feat.alpha.example.com', profAlpha.id);
+  alphaFeature.env.inheritsFrom = alphaDev.env.id;
+  hierarchySM.saveEnvironment('Alpha Feature 1', alphaFeature.env);
+
+  hierarchySM.createEnvironment('Beta Prod', 'https://beta.example.com', profBeta.id);
+
+  // Setup Collections:
+  // - Global Shared Library (no profileId)
+  // - Alpha Orders API (scoped to profAlpha.id)
+  // - Beta Inventory API (scoped to profBeta.id)
+  hierarchySM.createCollection('Global Shared Library');
+  hierarchySM.createCollection('Alpha Orders API', profAlpha.id);
+  hierarchySM.createCollection('Beta Inventory API', profBeta.id);
+
+  // Initialize Explorer Tree Provider
+  const treeProvider = new BlueByrdExplorerTreeDataProvider(hierarchySM);
+
+  // 1. Verify Global Scope (activeProfileId = undefined) shows all items
+  hierarchySM.setActiveProfileId(undefined);
+  treeProvider.refresh();
+
+  const rootItemsGlobal = treeProvider.getChildren();
+  assert.strictEqual(rootItemsGlobal.length, 5, 'Root should have 5 items: scope filter, profiles, environments, collections, history');
+  assert.strictEqual(rootItemsGlobal[0].kind, 'active-filter');
+  assert(rootItemsGlobal[0].label.includes('Global'), 'Scope filter should show Global when activeProfileId is undefined');
+
+  // Verify Environments Section in Global Scope
+  const envSectionGlobal = rootItemsGlobal[2];
+  const envChildrenGlobal = treeProvider.getChildren(envSectionGlobal);
+  const envNamesGlobal = envChildrenGlobal.map(c => c.label);
+  assert(envNamesGlobal.includes('Global Root'), 'Global Root environment must be present');
+  assert(envNamesGlobal.includes('Alpha Base'), 'Alpha Base environment must be present at root');
+  assert(envNamesGlobal.includes('Beta Prod'), 'Beta Prod environment must be present at root');
+
+  // Verify Parent -> Child hierarchy nesting under Alpha Base:
+  const alphaBaseItem = envChildrenGlobal.find(c => c.label === 'Alpha Base');
+  assert(alphaBaseItem, 'Alpha Base item should exist');
+  assert.strictEqual(alphaBaseItem.children.length, 1, 'Alpha Base should have 1 child (Alpha Dev)');
+  assert(alphaBaseItem.description.includes('Parent (1)'), 'Alpha Base description should indicate 1 child');
+
+  // Verify expanding Alpha Base via getChildren(alphaBaseItem) returns Alpha Dev
+  const alphaBaseChildren = treeProvider.getChildren(alphaBaseItem);
+  assert.strictEqual(alphaBaseChildren.length, 1);
+  const alphaDevItem = alphaBaseChildren[0];
+  assert.strictEqual(alphaDevItem.label, 'Alpha Dev');
+  assert(alphaDevItem.description.includes('Parent (1)'), 'Alpha Dev should have 1 child (Alpha Feature 1)');
+
+  // Verify multi-level nesting: expanding Alpha Dev returns Alpha Feature 1
+  const alphaDevChildren = treeProvider.getChildren(alphaDevItem);
+  assert.strictEqual(alphaDevChildren.length, 1);
+  const alphaFeatureItem = alphaDevChildren[0];
+  assert.strictEqual(alphaFeatureItem.label, 'Alpha Feature 1');
+  assert(alphaFeatureItem.description.includes('inherits: Alpha Dev'), 'Child environment should show parent in description');
+
+  // 2. Switch Active Profile to Tenant Alpha
+  hierarchySM.setActiveProfileId(profAlpha.id);
+  hierarchySM.setActiveEnvironmentName('Alpha Dev');
+  treeProvider.refresh();
+
+  const rootItemsAlpha = treeProvider.getChildren();
+  assert(rootItemsAlpha[0].label.includes('Tenant Alpha'), 'Scope filter label must show active profile name');
+
+  // Check Environments filtered by Tenant Alpha
+  const envSectionAlpha = rootItemsAlpha[2];
+  const envChildrenAlpha = treeProvider.getChildren(envSectionAlpha);
+  const alphaEnvNames = envChildrenAlpha.map(c => c.label);
+  assert(alphaEnvNames.includes('Global Root'), 'Global Root must remain visible when filtered by profile');
+  assert(alphaEnvNames.includes('Alpha Base'), 'Alpha Base must be visible under Tenant Alpha');
+  assert(!alphaEnvNames.includes('Beta Prod'), 'Beta Prod must be hidden under Tenant Alpha scope');
+
+  // Check Active Environment Indicator
+  const alphaBaseUnderAlpha = envChildrenAlpha.find(c => c.label === 'Alpha Base');
+  const devUnderAlpha = treeProvider.getChildren(alphaBaseUnderAlpha)[0];
+  assert(devUnderAlpha.description.includes('✔ Active'), 'Active environment Alpha Dev must show ✔ Active badge');
+
+  // Check Collections filtered by Tenant Alpha
+  const colSectionAlpha = rootItemsAlpha[3];
+  const colChildrenAlpha = treeProvider.getChildren(colSectionAlpha);
+  const alphaColNames = colChildrenAlpha.map(c => c.label);
+  assert(alphaColNames.includes('Global Shared Library'), 'Global collection must remain visible under Tenant Alpha');
+  assert(alphaColNames.includes('Alpha Orders API'), 'Alpha Orders API collection must be visible');
+  assert(!alphaColNames.includes('Beta Inventory API'), 'Beta Inventory API collection must be hidden under Tenant Alpha scope');
+
+  // 3. Switch Active Profile to Tenant Beta
+  hierarchySM.setActiveProfileId(profBeta.id);
+  treeProvider.refresh();
+
+  const rootItemsBeta = treeProvider.getChildren();
+  assert(rootItemsBeta[0].label.includes('Tenant Beta'), 'Scope filter label must show Tenant Beta');
+
+  const envSectionBeta = rootItemsBeta[2];
+  const envChildrenBeta = treeProvider.getChildren(envSectionBeta);
+  const betaEnvNames = envChildrenBeta.map(c => c.label);
+  assert(betaEnvNames.includes('Beta Prod'), 'Beta Prod must be visible under Tenant Beta');
+  assert(!betaEnvNames.includes('Alpha Base'), 'Alpha Base must be hidden under Tenant Beta scope');
+
+  const colSectionBeta = rootItemsBeta[3];
+  const colChildrenBeta = treeProvider.getChildren(colSectionBeta);
+  const betaColNames = colChildrenBeta.map(c => c.label);
+  assert(betaColNames.includes('Global Shared Library'), 'Global collection must remain visible under Tenant Beta');
+  assert(betaColNames.includes('Beta Inventory API'), 'Beta Inventory API collection must be visible');
+  assert(!betaColNames.includes('Alpha Orders API'), 'Alpha Orders API collection must be hidden under Tenant Beta scope');
+
+  console.log('✓ Profile-Scoped Workspace & Visual Parent -> Child Environment Tree Nesting verified');
+
+  console.log('\nAll 33 verification test suites passed successfully! 🎉');
   process.exit(0);
 })().catch(err => {
   console.error('Async test suite failure:', err);

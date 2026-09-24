@@ -9,15 +9,18 @@ export class BlueByrdTreeItem extends vscode.TreeItem {
     public readonly parentId?: string,
     public readonly requestContext?: RequestContext,
     public children: BlueByrdTreeItem[] = [],
-    command?: vscode.Command
+    command?: vscode.Command,
+    customDescription?: string
   ) {
     const isExpandable =
-      kind === 'section' || kind === 'collection' || kind === 'folder';
+      kind === 'section' || kind === 'collection' || kind === 'folder' || (kind === 'environment' && children.length > 0);
 
     super(
       label,
       isExpandable
-        ? vscode.TreeItemCollapsibleState.Collapsed
+        ? (kind === 'section' || (kind === 'environment' && children.length > 0)
+            ? vscode.TreeItemCollapsibleState.Expanded
+            : vscode.TreeItemCollapsibleState.Collapsed)
         : vscode.TreeItemCollapsibleState.None
     );
 
@@ -25,7 +28,18 @@ export class BlueByrdTreeItem extends vscode.TreeItem {
     this.command = command;
     this.contextValue = `bluebyrd.${kind}`;
 
-    if (kind === 'section') {
+    if (customDescription !== undefined) {
+      this.description = customDescription;
+    }
+
+    if (kind === 'active-filter') {
+      this.iconPath = new vscode.ThemeIcon('filter');
+      this.contextValue = 'bluebyrd.activeFilter';
+      if (customDescription === undefined) {
+        this.description = '(click to switch)';
+      }
+      this.tooltip = `Active Profile Scope: ${label}\nClick to switch profile scope.`;
+    } else if (kind === 'section') {
       this.collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
       if (label === 'Profiles') {
         this.iconPath = new vscode.ThemeIcon('account');
@@ -42,31 +56,45 @@ export class BlueByrdTreeItem extends vscode.TreeItem {
       }
     } else if (kind === 'profile') {
       this.iconPath = new vscode.ThemeIcon('person');
-      this.description = 'profile';
+      if (customDescription === undefined) {
+        this.description = 'profile';
+      }
       this.tooltip = `Profile: ${label}`;
     } else if (kind === 'environment') {
-      this.iconPath = new vscode.ThemeIcon('globe');
-      this.description = 'env';
+      const isParent = children.length > 0;
+      this.iconPath = isParent ? new vscode.ThemeIcon('server-process') : new vscode.ThemeIcon('globe');
+      this.contextValue = isParent ? 'bluebyrd.environment.parent' : 'bluebyrd.environment';
+      if (customDescription === undefined) {
+        this.description = isParent ? `Parent (${children.length})` : 'env';
+      }
       this.tooltip = `Environment: ${label}`;
     } else if (kind === 'collection') {
       this.iconPath = new vscode.ThemeIcon('repo');
       const count = children.length;
-      this.description = `${count} ${count === 1 ? 'item' : 'items'}`;
+      if (customDescription === undefined) {
+        this.description = `${count} ${count === 1 ? 'item' : 'items'}`;
+      }
       this.tooltip = `Collection: ${label}`;
     } else if (kind === 'folder') {
       this.iconPath = new vscode.ThemeIcon('folder');
       const count = children.length;
-      this.description = `${count} ${count === 1 ? 'request' : 'requests'}`;
+      if (customDescription === undefined) {
+        this.description = `${count} ${count === 1 ? 'request' : 'requests'}`;
+      }
       this.tooltip = `Folder: ${label}`;
     } else if (kind === 'request') {
       const method = requestContext?.method || 'GET';
       this.iconPath = new vscode.ThemeIcon('symbol-method');
-      this.description = method;
+      if (customDescription === undefined) {
+        this.description = method;
+      }
       this.tooltip = `${method} ${requestContext?.url || label}`;
     } else if (kind === 'history') {
       const method = requestContext?.method || 'GET';
       this.iconPath = new vscode.ThemeIcon('clock');
-      this.description = method;
+      if (customDescription === undefined) {
+        this.description = method;
+      }
       this.tooltip = `${method} ${requestContext?.url || label}`;
       this.contextValue = 'bluebyrd.historyItem';
     }

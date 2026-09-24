@@ -152,6 +152,8 @@ export class BlueByrdStateManager {
         },
       ],
       history: [],
+      activeProfileId: undefined,
+      activeEnvironmentName: 'Local',
     };
   }
 
@@ -212,6 +214,7 @@ export class BlueByrdStateManager {
           headers: env.headers || {},
           inheritsFrom: env.inheritsFrom,
           notes: env.notes || '',
+          profileId: env.profileId,
         };
       });
     } else {
@@ -300,6 +303,7 @@ export class BlueByrdStateManager {
             variables: col.variables || {},
             headers: col.headers || {},
             inheritsFrom: col.inheritsFrom,
+            profileId: col.profileId,
           };
         })
       : fallback.collections;
@@ -318,11 +322,16 @@ export class BlueByrdStateManager {
           .slice(0, 50)
       : [];
 
+    const activeProfileId = typeof value.activeProfileId === 'string' ? value.activeProfileId : undefined;
+    const activeEnvironmentName = typeof value.activeEnvironmentName === 'string' ? value.activeEnvironmentName : (fallback.activeEnvironmentName || undefined);
+
     return {
       profiles,
       environments,
       collections,
       history,
+      activeProfileId,
+      activeEnvironmentName,
     };
   }
 
@@ -341,6 +350,27 @@ export class BlueByrdStateManager {
 
   public save(state: AppState): void {
     this.context.workspaceState.update(this.storageKey, state);
+  }
+
+  // --- Active Context & Workspace Scope ---
+  public getActiveProfileId(): string | undefined {
+    return this.getState().activeProfileId;
+  }
+
+  public setActiveProfileId(id?: string): void {
+    const state = this.getState();
+    state.activeProfileId = id;
+    this.save(state);
+  }
+
+  public getActiveEnvironmentName(): string | undefined {
+    return this.getState().activeEnvironmentName;
+  }
+
+  public setActiveEnvironmentName(name?: string): void {
+    const state = this.getState();
+    state.activeEnvironmentName = name;
+    this.save(state);
   }
 
   // --- Profiles ---
@@ -393,14 +423,21 @@ export class BlueByrdStateManager {
   public deleteProfile(nameOrId: string): boolean {
     const state = this.getState();
     const initialLen = state.profiles.length;
+    const deletedProfile = state.profiles.find((p) => p.id === nameOrId || p.name === nameOrId);
     const byId = state.profiles.filter((p) => p.id !== nameOrId);
     if (byId.length !== initialLen) {
       state.profiles = byId;
+      if (state.activeProfileId === nameOrId || (deletedProfile && state.activeProfileId === deletedProfile.id)) {
+        state.activeProfileId = undefined;
+      }
       this.save(state);
       return true;
     }
     state.profiles = state.profiles.filter((p) => p.name !== nameOrId);
     if (state.profiles.length !== initialLen) {
+      if (state.activeProfileId === nameOrId || (deletedProfile && state.activeProfileId === deletedProfile.id)) {
+        state.activeProfileId = undefined;
+      }
       this.save(state);
       return true;
     }
@@ -427,7 +464,7 @@ export class BlueByrdStateManager {
     return entry ? entry[0] : undefined;
   }
 
-  public createEnvironment(name: string, baseUrl = 'https://api.example.com'): { name: string; env: EnvironmentConfig } {
+  public createEnvironment(name: string, baseUrl = 'https://api.example.com', profileId?: string): { name: string; env: EnvironmentConfig } {
     const state = this.getState();
     const trimmed = name.trim() || 'New Environment';
     let finalName = trimmed;
@@ -443,6 +480,7 @@ export class BlueByrdStateManager {
       variables: {},
       headers: {},
       notes: '',
+      profileId,
     };
     state.environments[finalName] = newEnv;
     this.save(state);
@@ -453,6 +491,9 @@ export class BlueByrdStateManager {
     const state = this.getState();
     if (oldName && oldName !== name) {
       delete state.environments[oldName];
+      if (state.activeEnvironmentName === oldName) {
+        state.activeEnvironmentName = name;
+      }
     }
     state.environments[name] = env;
     this.save(state);
@@ -463,6 +504,9 @@ export class BlueByrdStateManager {
     const key = Object.keys(state.environments).find((k) => k === nameOrId || state.environments[k].id === nameOrId);
     if (key) {
       delete state.environments[key];
+      if (state.activeEnvironmentName === key || state.activeEnvironmentName === nameOrId) {
+        state.activeEnvironmentName = undefined;
+      }
       this.save(state);
       return true;
     }
@@ -479,13 +523,14 @@ export class BlueByrdStateManager {
     return this.getState().collections.find((c) => c.id === idOrName || c.name === idOrName);
   }
 
-  public createCollection(name: string): Collection {
+  public createCollection(name: string, profileId?: string): Collection {
     const state = this.getState();
     const newCol: Collection = {
       id: this.generateId('col'),
       name: name.trim() || 'New Collection',
       folders: [],
       requests: [],
+      profileId,
     };
     state.collections.push(newCol);
     this.save(state);

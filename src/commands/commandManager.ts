@@ -116,6 +116,11 @@ export class CommandManager {
     s.push(
       vscode.commands.registerCommand('blueByrdApiClient.newRequest', (treeItem?: BlueByrdTreeItem) => {
         const state = this.stateManager.getState();
+        const activeProfile = state.activeProfileId && state.activeProfileId !== 'all'
+          ? this.stateManager.getProfile(state.activeProfileId)
+          : state.profiles[0];
+        const activeEnv = state.activeEnvironmentName || Object.keys(state.environments)[0] || 'Local';
+
         const collection = treeItem?.kind === 'collection'
           ? treeItem.label
           : treeItem?.kind === 'folder' && treeItem.parentId
@@ -131,14 +136,236 @@ export class CommandManager {
             url: '{{baseUrl}}/',
             collection,
             folder,
-            profile: state.profiles[0]?.name,
-            environment: Object.keys(state.environments)[0],
+            profile: activeProfile?.name || state.profiles[0]?.name,
+            environment: activeEnv,
           },
           this.stateManager,
           this.httpService,
           this.variableService,
           this.authService
         );
+      })
+    );
+
+    // Switch Active Profile Scope
+    s.push(
+      vscode.commands.registerCommand('blueByrdApiClient.switchActiveProfile', async () => {
+        const state = this.stateManager.getState();
+        const activeProfileId = state.activeProfileId;
+
+        const items: Array<vscode.QuickPickItem & { profileId?: string }> = [
+          {
+            label: '$(globe) All Profiles (Global Scope)',
+            description: (!activeProfileId || activeProfileId === 'all') ? 'Current Active Scope' : '',
+            profileId: 'all',
+          },
+        ];
+
+        for (const p of state.profiles) {
+          const isCurrent = activeProfileId === p.id || activeProfileId === p.name;
+          items.push({
+            label: `$(account) ${p.name}`,
+            description: isCurrent ? 'Current Active Scope' : '',
+            profileId: p.id,
+          });
+        }
+
+        items.push({
+          label: '$(add) Create New Profile...',
+          profileId: '__create__',
+        });
+
+        const selected = await vscode.window.showQuickPick(items, {
+          placeHolder: 'Select workspace profile scope',
+        });
+
+        if (!selected) return;
+
+        if (selected.profileId === '__create__') {
+          vscode.commands.executeCommand('blueByrdApiClient.createProfile');
+          return;
+        }
+
+        const newId = selected.profileId === 'all' ? undefined : selected.profileId;
+        this.stateManager.setActiveProfileId(newId);
+        this.treeProvider.refresh();
+        vscode.window.showInformationMessage(`Active profile scope set to: ${selected.label.replace(/^\$\([^)]+\)\s*/, '')}`);
+      })
+    );
+
+    // Set Active Profile Directly (e.g. from context menu)
+    s.push(
+      vscode.commands.registerCommand('blueByrdApiClient.setActiveProfile', (arg?: BlueByrdTreeItem | { id?: string; name?: string } | string) => {
+        let profileId: string | undefined;
+        let profileName: string | undefined;
+
+        if (arg instanceof BlueByrdTreeItem) {
+          profileId = arg.itemId;
+          profileName = arg.label;
+        } else if (typeof arg === 'string') {
+          profileId = arg;
+        } else if (arg && typeof arg === 'object') {
+          profileId = (arg as any).itemId || arg.id;
+          profileName = arg.name || (arg as any).label;
+        }
+
+        const profile = this.stateManager.getProfile(profileId) || this.stateManager.getProfile(profileName);
+        if (profile) {
+          this.stateManager.setActiveProfileId(profile.id);
+          this.treeProvider.refresh();
+          vscode.window.showInformationMessage(`Active profile scope set to: ${profile.name}`);
+        }
+      })
+    );
+
+    // Switch Active Environment
+    s.push(
+      vscode.commands.registerCommand('blueByrdApiClient.switchActiveEnvironment', async () => {
+        const state = this.stateManager.getState();
+        const activeEnvName = state.activeEnvironmentName;
+        const envEntries = Object.entries(state.environments);
+
+        if (envEntries.length === 0) {
+          vscode.window.showWarningMessage('No environments available.');
+          return;
+        }
+
+        const items: Array<vscode.QuickPickItem & { envName?: string }> = envEntries.map(([name, env]) => {
+          const isCurrent = activeEnvName === name || (env.id && activeEnvName === env.id);
+          const parts: string[] = [];
+          if (env.baseUrl) parts.push(env.baseUrl);
+          if (env.inheritsFrom) parts.push(`inherits: ${env.inheritsFrom}`);
+          if (isCurrent) parts.push('Current Active');
+          return {
+            label: `$(globe) ${name}`,
+            description: parts.join(' • '),
+            envName: name,
+          };
+        });
+
+        items.push({
+          label: '$(add) Create New Environment...',
+          envName: '__create__',
+        });
+
+        const selected = await vscode.window.showQuickPick(items, {
+          placeHolder: 'Select active environment',
+        });
+
+        if (!selected) return;
+
+        if (selected.envName === '__create__') {
+          vscode.commands.executeCommand('blueByrdApiClient.createEnvironment');
+          return;
+        }
+
+        this.stateManager.setActiveEnvironmentName(selected.envName);
+        this.treeProvider.refresh();
+        vscode.window.showInformationMessage(`Active environment set to: ${selected.envName}`);
+      })
+    );
+
+    // Set Active Environment Directly (e.g. from context menu)
+    s.push(
+      vscode.commands.registerCommand('blueByrdApiClient.setActiveEnvironment', (arg?: BlueByrdTreeItem | { id?: string; name?: string } | string) => {
+        let envName: string | undefined;
+
+        if (arg instanceof BlueByrdTreeItem) {
+          envName = arg.label;
+        } else if (typeof arg === 'string') {
+          envName = this.stateManager.getEnvironmentName(arg) || arg;
+        } else if (arg && typeof arg === 'object') {
+          envName = arg.name || (arg as any).label || this.stateManager.getEnvironmentName(arg.id);
+        }
+
+        if (envName) {
+          this.stateManager.setActiveEnvironmentName(envName);
+          this.treeProvider.refresh();
+          vscode.window.showInformationMessage(`Active environment set to: ${envName}`);
+        }
+      })
+    );
+
+    // Switch Context (Profile or Environment)
+    s.push(
+      vscode.commands.registerCommand('blueByrdApiClient.switchContext', async () => {
+        const state = this.stateManager.getState();
+        const activeProfile = state.activeProfileId && state.activeProfileId !== 'all'
+          ? this.stateManager.getProfile(state.activeProfileId)
+          : undefined;
+        const profileLabel = activeProfile ? activeProfile.name : 'All Profiles (Global)';
+        const envLabel = state.activeEnvironmentName || Object.keys(state.environments)[0] || 'None';
+
+        const choice = await vscode.window.showQuickPick([
+          {
+            label: '$(account) Switch Active Profile Scope',
+            description: `Current: ${profileLabel}`,
+            action: 'profile',
+          },
+          {
+            label: '$(globe) Switch Active Environment',
+            description: `Current: ${envLabel}`,
+            action: 'environment',
+          },
+        ], {
+          placeHolder: 'Select context to switch',
+        });
+
+        if (!choice) return;
+        if (choice.action === 'profile') {
+          vscode.commands.executeCommand('blueByrdApiClient.switchActiveProfile');
+        } else {
+          vscode.commands.executeCommand('blueByrdApiClient.switchActiveEnvironment');
+        }
+      })
+    );
+
+    // Assign Profile Scope to Environment or Collection
+    s.push(
+      vscode.commands.registerCommand('blueByrdApiClient.assignProfileScope', async (arg?: BlueByrdTreeItem) => {
+        if (!arg || !arg.itemId) return;
+
+        const state = this.stateManager.getState();
+        const profiles = state.profiles;
+
+        const picks: Array<vscode.QuickPickItem & { profileId?: string }> = [
+          {
+            label: '$(globe) Global / Shared (All Profiles)',
+            profileId: undefined,
+          },
+        ];
+
+        for (const p of profiles) {
+          picks.push({
+            label: `$(account) ${p.name}`,
+            profileId: p.id,
+          });
+        }
+
+        const selected = await vscode.window.showQuickPick(picks, {
+          placeHolder: `Assign profile scope for '${arg.label}'`,
+        });
+
+        if (selected === undefined) return;
+
+        if (arg.kind === 'environment') {
+          const env = this.stateManager.getEnvironment(arg.itemId) || this.stateManager.getEnvironment(arg.label);
+          const envName = this.stateManager.getEnvironmentName(arg.itemId || arg.label) || arg.label;
+          if (env) {
+            env.profileId = selected.profileId;
+            this.stateManager.saveEnvironment(envName, env);
+            this.treeProvider.refresh();
+            vscode.window.showInformationMessage(`Scope for environment '${envName}' updated.`);
+          }
+        } else if (arg.kind === 'collection') {
+          const col = this.stateManager.getCollection(arg.itemId) || this.stateManager.getCollection(arg.label);
+          if (col) {
+            col.profileId = selected.profileId;
+            this.stateManager.saveCollection(col);
+            this.treeProvider.refresh();
+            vscode.window.showInformationMessage(`Scope for collection '${col.name}' updated.`);
+          }
+        }
       })
     );
 

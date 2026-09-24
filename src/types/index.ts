@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 
-export type SidebarNodeKind = 'section' | 'profile' | 'environment' | 'collection' | 'folder' | 'request' | 'history';
+export type SidebarNodeKind = 'section' | 'active-filter' | 'profile' | 'environment' | 'collection' | 'folder' | 'request' | 'history';
 
 export type RequestContext = {
   id?: string;
@@ -107,6 +107,7 @@ export type Collection = {
   variables?: Record<string, string>;
   headers?: Record<string, string>;
   inheritsFrom?: string;
+  profileId?: string;
 };
 
 export type ResponseMetadata = {
@@ -150,6 +151,7 @@ export type EnvironmentConfig = {
   headers?: Record<string, string>;
   inheritsFrom?: string;
   notes?: string;
+  profileId?: string;
 };
 
 export type AppState = {
@@ -157,6 +159,8 @@ export type AppState = {
   environments: Record<string, EnvironmentConfig>;
   collections: Collection[];
   history: RecentRequest[];
+  activeProfileId?: string;
+  activeEnvironmentName?: string;
 };
 
 export type VariableSourceKind =
