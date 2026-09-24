@@ -38,7 +38,7 @@ Welcome to the initial release of **bluebyrd**, the lightweight, native, and loc
   - `{{$uuid}}`: Generates RFC 4122 v4 unique identifiers.
   - `{{$timestamp}}`: Current Unix epoch timestamp in milliseconds.
   - `{{$isoDate}}`: Current UTC timestamp in ISO-8601 format.
-  - `{{$randomInt:N}}`: Generates cryptographically pseudorandom $N$-digit integers.
+  - `{{$randomInt:N}}`: Generates cryptographically pseudorandom N-digit integers.
   - `{{$date:format}}`: Formats current date and time tokens (`yyyy`, `MM`, `dd`, `HH`, `mm`, `ss`).
 - **Smart JSON Type Coercion**:
   - Automatically coerces quoted string tokens (such as `"{{FLAG}}"`) to native JSON booleans (`true`/`false`) or `null` primitives upon substitution, preventing malformed payload errors.

@@ -29,7 +29,7 @@ Built natively using the VS Code Extension API and webviews, bluebyrd launches i
 
 ### 3. 🧬 Hierarchical Precision (Inheritance Done Right)
 Managing variables and authentication across complex multi-service projects shouldn't require copy-pasting headers across dozens of requests. bluebyrd implements an end-to-end inheritance architecture:
-$$\text{Profile} \longrightarrow \text{Parent Environment} \longrightarrow \text{Active Environment} \longrightarrow \text{Collection} \longrightarrow \text{Folder} \longrightarrow \text{Request}$$
+> **Profile** → **Parent Environment** → **Active Environment** → **Collection** → **Folder** → **Request**
 
 With the built-in **Visual Inheritance Inspector**, you can see the exact origin of every variable and header (`[Profile]`, `[Env]`, `[Collection]`), inspect overridden values, and override anything with a single click.
 

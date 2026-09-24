@@ -17,7 +17,7 @@ bluebyrd is an open-source API client built natively for VS Code. The goal is to
   - `{{$uuid}}`: RFC 4122 v4 UUID generator.
   - `{{$timestamp}}`: Current Unix epoch timestamp in milliseconds.
   - `{{$isoDate}}`: Current ISO-8601 UTC timestamp.
-  - `{{$randomInt:N}}`: Random $N$-digit numeric string.
+  - `{{$randomInt:N}}`: Random N-digit numeric string.
   - `{{$date:format}}`: Formatted date tokens (`yyyy`, `MM`, `dd`, `HH`, `mm`, `ss`).
 - **Smart JSON Type Coercion**:
   - Quoted tokens (`"{{FLAG}}"`) automatically coerce to real JSON boolean (`true`/`false`) or `null` primitives when resolved.

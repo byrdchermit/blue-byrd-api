@@ -110,7 +110,7 @@ An **Environment** represents a specific target (such as `Localhost`, `Dev`, `St
 
 bluebyrd uses a 6-tier inheritance engine that resolves variables and headers in the following cascading order:
 
-$$\text{Profile} \longrightarrow \text{Parent Environment} \longrightarrow \text{Active Environment} \longrightarrow \text{Collection} \longrightarrow \text{Folder} \longrightarrow \text{Request}$$
+> **Profile** → **Parent Environment** → **Active Environment** → **Collection** → **Folder** → **Request**
 
 ### The Live Inheritance Inspector
 In any open request, switch to the **Variables** or **Headers** tab to view the live inheritance table:
@@ -130,8 +130,8 @@ You can use dynamic tokens anywhere in your URLs, headers, or body payloads:
 | `{{$uuid}}` | Generates a standard RFC 4122 v4 UUID | `c73a24e2-658b-4a0e-a9ec-281b37f4460d` |
 | `{{$timestamp}}` | Current Unix epoch time in milliseconds | `1727217600000` |
 | `{{$isoDate}}` | Current ISO-8601 UTC timestamp | `2026-09-24T22:40:00.000Z` |
-| `{{$randomInt:N}}` | Random $N$-digit numeric string | `{{$randomInt:6}}` $\rightarrow$ `482910` |
-| `{{$date:format}}` | Date formatted with tokens (`yyyy`, `MM`, `dd`, `HH`, `mm`, `ss`) | `{{$date:yyyy-MM-dd}}` $\rightarrow$ `2026-09-24` |
+| `{{$randomInt:N}}` | Random N-digit numeric string | `{{$randomInt:6}}` → `482910` |
+| `{{$date:format}}` | Date formatted with tokens (`yyyy`, `MM`, `dd`, `HH`, `mm`, `ss`) | `{{$date:yyyy-MM-dd}}` → `2026-09-24` |
 
 ### Smart JSON Type Coercion
 When writing JSON payloads, wrapping variables in quotes often causes string/boolean mismatch issues. bluebyrd automatically detects when a quoted variable resolves to a boolean or null value and coerces it:
