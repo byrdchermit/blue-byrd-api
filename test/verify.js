@@ -1137,7 +1137,48 @@ console.log('✓ Request panel script integrity & syntax validation passed');
 
   console.log('✓ UpdateService semver logic & update command manifest verified');
 
-  console.log('\nAll 31 verification test suites passed successfully! 🎉');
+  // Test 32: Security Hardening (Prototype Pollution & Webview Script Neutralization)
+  const prototypePayload = JSON.stringify({
+    info: {
+      name: 'Pollution Collection',
+      schema: 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json'
+    },
+    item: [
+      {
+        name: 'Evil Request',
+        request: {
+          url: 'https://example.com/api',
+          method: 'GET',
+          header: [
+            { key: '__proto__', value: 'polluted' },
+            { key: 'constructor', value: 'polluted' },
+            { key: 'X-Safe-Header', value: 'clean' }
+          ]
+        }
+      }
+    ]
+  });
+  const parsedPollution = ImportExportService.parse(prototypePayload);
+  const evilHeaders = parsedPollution.collection.requests[0].headers;
+  assert.strictEqual(evilHeaders['X-Safe-Header'], 'clean', 'Safe header should be retained');
+  assert.strictEqual(Object.prototype.hasOwnProperty.call(evilHeaders, '__proto__'), false, '__proto__ key must not exist as own property');
+  assert.strictEqual(Object.prototype.hasOwnProperty.call(evilHeaders, 'constructor'), false, 'constructor key must not exist as own property');
+  assert.strictEqual(({}).polluted, undefined, 'Object.prototype must not be polluted');
+
+  const xssContext = {
+    url: 'https://example.com/"><img src=x onerror=alert(1)>',
+    notes: '</textarea><script>alert("xss")</script>',
+    body: '{"evil": "</script><script>alert(2)</script>"}',
+  };
+  const requestPanelHtml = require('../dist/views/panels/requestPanelHtml');
+  const renderedHtml = requestPanelHtml.getRequestPanelHtml(xssContext, stateManager.getState());
+  assert(!renderedHtml.includes('onerror=alert(1)>'), 'Attributes in rendered HTML must be safely escaped');
+  assert(!renderedHtml.includes('</textarea><script>'), 'Textareas in rendered HTML must be safely escaped');
+  assert(!renderedHtml.includes('</script><script>'), 'Script tag breakout via embedded JSON must be neutralized');
+
+  console.log('✓ Webview XSS & prototype pollution security hardening verified');
+
+  console.log('\nAll 32 verification test suites passed successfully! 🎉');
   process.exit(0);
 })().catch(err => {
   console.error('Async test suite failure:', err);

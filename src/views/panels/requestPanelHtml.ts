@@ -1,6 +1,16 @@
 import { AppState, InheritedHeaderInfo, InheritedVariableInfo, RequestContext } from '../../types';
 import { renderAuthCss, renderAuthFieldsHtml, getSharedAuthClientScript } from './sharedAuthHtml';
 
+function escapeHtml(str: unknown): string {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 export function getRequestPanelHtml(
   context: RequestContext,
   state: AppState,
@@ -12,7 +22,7 @@ export function getRequestPanelHtml(
       const isDuplicate = state.profiles.filter((o) => o.name === p.name).length > 1;
       const label = isDuplicate ? `${p.name} (${p.id.replace(/^profile-/, '')})` : p.name;
       const isSelected = p.id === context.profileId || p.name === context.profile || p.id === context.profile;
-      return `<option value="${p.name}" data-id="${p.id}" ${isSelected ? 'selected' : ''}>${label}</option>`;
+      return `<option value="${escapeHtml(p.name)}" data-id="${escapeHtml(p.id)}" ${isSelected ? 'selected' : ''}>${escapeHtml(label)}</option>`;
     })
     .join('');
 
@@ -20,12 +30,12 @@ export function getRequestPanelHtml(
   const environmentOptions = envKeys
     .map(
       (key) =>
-        `<option value="${key}" ${key === (context.environment || envKeys[0]) ? 'selected' : ''}>${key}</option>`
+        `<option value="${escapeHtml(key)}" ${key === (context.environment || envKeys[0]) ? 'selected' : ''}>${escapeHtml(key)}</option>`
     )
     .join('');
 
-  const collectionName = context.collection || state.collections[0]?.name || 'Demo Collection';
-  const displayFolder = context.folder && context.folder !== 'Root' ? context.folder : 'Root';
+  const collectionName = escapeHtml(context.collection || state.collections[0]?.name || 'Demo Collection');
+  const displayFolder = escapeHtml(context.folder && context.folder !== 'Root' ? context.folder : 'Root');
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -617,7 +627,7 @@ export function getRequestPanelHtml(
         class="url-input"
         type="text"
         placeholder="Enter URL or {{baseUrl}}/endpoint"
-        value="${context.url || ''}"
+        value="${escapeHtml(context.url || '')}"
       />
 
       <div class="btn-group">
@@ -806,7 +816,7 @@ export function getRequestPanelHtml(
 
         <!-- Tab: Notes -->
         <div id="tab-notes" class="tab-content">
-          <textarea id="req-notes" class="textarea-box" placeholder="Documentation or notes for this request...">${context.notes || ''}</textarea>
+          <textarea id="req-notes" class="textarea-box" placeholder="Documentation or notes for this request...">${escapeHtml(context.notes || '')}</textarea>
         </div>
       </div>
 
@@ -852,16 +862,16 @@ export function getRequestPanelHtml(
     ${getSharedAuthClientScript()}
 
     // Context / ID tracking
-    let currentRequestId = "${context.requestId || context.id || ''}";
-    let initialHeaders = ${JSON.stringify(context.headers || {})};
-    let initialVars = ${JSON.stringify(context.variables || [])};
+    let currentRequestId = "${escapeHtml(context.requestId || context.id || '')}";
+    let initialHeaders = ${JSON.stringify(context.headers || {}).replace(/</g, '\\u003c')};
+    let initialVars = ${JSON.stringify(context.variables || []).replace(/</g, '\\u003c')};
     let initialInheritedVars = ${JSON.stringify(initialInheritedVars).replace(/</g, '\\u003c')};
     let initialInheritedHeaders = ${JSON.stringify(initialInheritedHeaders).replace(/</g, '\\u003c')};
     let currentInheritedVars = initialInheritedVars;
     let currentInheritedHeaders = initialInheritedHeaders;
-    let initialBodyType = "${context.bodyType || ''}";
-    let initialBody = ${JSON.stringify(context.body || '')};
-    let initialBodyFormData = ${JSON.stringify(context.bodyFormData || [])};
+    let initialBodyType = "${escapeHtml(context.bodyType || '')}";
+    let initialBody = ${JSON.stringify(context.body || '').replace(/</g, '\\u003c')};
+    let initialBodyFormData = ${JSON.stringify(context.bodyFormData || []).replace(/</g, '\\u003c')};
 
     // Tab switching
     document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -894,8 +904,8 @@ export function getRequestPanelHtml(
       row.className = 'param-row';
       row.innerHTML = \`
         <input type="checkbox" \${enabled ? 'checked' : ''} data-role="enabled" style="cursor: pointer;" />
-        <input class="param-input" type="text" placeholder="Key" value="\${name}" data-role="name" />
-        <input class="param-input" type="\${hidden ? 'password' : 'text'}" placeholder="Value" value="\${value}" data-role="value" />
+        <input class="param-input" type="text" placeholder="Key" value="\${String(name).replace(/"/g, '&quot;')}" data-role="name" />
+        <input class="param-input" type="\${hidden ? 'password' : 'text'}" placeholder="Value" value="\${String(value).replace(/"/g, '&quot;')}" data-role="value" />
         <label style="font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 4px; cursor: pointer;">
           <input type="checkbox" \${hidden ? 'checked' : ''} data-role="hidden" /> Mask
         </label>
@@ -939,8 +949,8 @@ export function getRequestPanelHtml(
       row.className = 'param-row';
       row.innerHTML = \`
         <input type="checkbox" \${enabled ? 'checked' : ''} data-role="enabled" style="cursor: pointer;" />
-        <input class="param-input" type="text" placeholder="Header name" value="\${key}" data-role="key" />
-        <input class="param-input" type="text" placeholder="Value" value="\${value}" data-role="value" />
+        <input class="param-input" type="text" placeholder="Header name" value="\${String(key).replace(/"/g, '&quot;')}" data-role="key" />
+        <input class="param-input" type="text" placeholder="Value" value="\${String(value).replace(/"/g, '&quot;')}" data-role="value" />
         <div></div>
         <button class="icon-btn" title="Delete" data-role="delete">✕</button>
       \`;

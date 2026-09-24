@@ -264,7 +264,7 @@ export class ImportExportService {
     const headers: Record<string, string> = {};
     if (Array.isArray(req.header)) {
       for (const h of req.header) {
-        if (!h.disabled && h.key) {
+        if (!h.disabled && h.key && this.isSafeKey(h.key)) {
           headers[h.key] = h.value ?? '';
         }
       }
@@ -430,7 +430,7 @@ export class ImportExportService {
 
     if (Array.isArray(data.values)) {
       for (const v of data.values) {
-        if (!v || v.enabled === false || !v.key) continue;
+        if (!v || v.enabled === false || !v.key || !this.isSafeKey(v.key)) continue;
         const val = String(v.value ?? '');
         variables[v.key] = val;
         const lowerKey = v.key.toLowerCase();
@@ -533,7 +533,7 @@ export class ImportExportService {
             ? String(param.schema.example)
             : '';
 
-          if (param.in === 'header') {
+          if (param.in === 'header' && this.isSafeKey(param.name)) {
             headers[param.name] = val;
           } else if (param.in === 'query') {
             queryParts.push(`${encodeURIComponent(param.name)}=${encodeURIComponent(val)}`);
@@ -626,11 +626,15 @@ export class ImportExportService {
   // Normalization Helpers for Universal Compatibility
   // ==========================================
 
+  private static isSafeKey(key: string): boolean {
+    return key !== '__proto__' && key !== 'constructor' && key !== 'prototype';
+  }
+
   private static normalizeHeaders(headers: any): Record<string, string> {
     const res: Record<string, string> = {};
     if (Array.isArray(headers)) {
       headers.forEach((h: any) => {
-        if (h && h.enabled !== false && h.key) {
+        if (h && h.enabled !== false && h.key && this.isSafeKey(h.key)) {
           res[h.key] = String(h.value ?? '');
         }
       });
@@ -638,7 +642,7 @@ export class ImportExportService {
     }
     if (headers && typeof headers === 'object') {
       Object.entries(headers).forEach(([k, v]) => {
-        if (v !== undefined && v !== null) {
+        if (v !== undefined && v !== null && this.isSafeKey(k)) {
           res[k] = String(v);
         }
       });
@@ -651,7 +655,7 @@ export class ImportExportService {
     const res: Record<string, string> = {};
     if (Array.isArray(variables)) {
       variables.forEach((v: any) => {
-        if (v && v.enabled !== false && v.key) {
+        if (v && v.enabled !== false && v.key && this.isSafeKey(v.key)) {
           res[v.key] = String(v.value ?? '');
         }
       });
@@ -659,7 +663,7 @@ export class ImportExportService {
     }
     if (variables && typeof variables === 'object') {
       Object.entries(variables).forEach(([k, v]) => {
-        if (v !== undefined && v !== null) {
+        if (v !== undefined && v !== null && this.isSafeKey(k)) {
           res[k] = String(v);
         }
       });

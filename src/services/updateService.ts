@@ -146,9 +146,9 @@ export class UpdateService {
           'Later'
         );
 
-        if (choice === 'Download Update') {
+        if (choice === 'Download Update' && downloadUrl.startsWith('https://')) {
           vscode.env.openExternal(vscode.Uri.parse(downloadUrl));
-        } else if (choice === 'View Changelog') {
+        } else if (choice === 'View Changelog' && release.html_url?.startsWith('https://')) {
           vscode.env.openExternal(vscode.Uri.parse(release.html_url));
         }
         return true;
