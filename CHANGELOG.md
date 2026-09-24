@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **Visual Parent &rarr; Child Environment Tree Nesting**:
+- **Visual Parent → Child Environment Tree Nesting**:
   - Environments inheriting from a parent environment via `inheritsFrom` are now rendered nested directly beneath their parent in the sidebar explorer tree.
   - Multi-level recursive nesting support with cycle-safe ancestry protection.
   - Parent environments display expansion chevrons and badges indicating child count (`Parent (N)`), while child environments display inheritance tags (`inherits: <parent>`).

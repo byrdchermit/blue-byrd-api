@@ -66,11 +66,11 @@ A **Profile** represents global context that can own or scope environments and c
 - **Active Profile Scope**: Click the top item in the sidebar (`Scope: <Profile>` or `Scope: All Profiles (Global)`) or the status bar indicator at the bottom to filter your sidebar to display only items relevant to that profile.
 - **Shared / Global Resources**: Items marked as `Global / Shared` remain visible across all profiles, allowing you to reuse common collections or global base environments everywhere.
 
-### Environments & Visual Parent &rarr; Child Nesting
+### Environments & Visual Parent → Child Nesting
 An **Environment** represents a specific deployment target (such as `Base`, `Dev`, `Staging`, or `Production`).
 
 - **Hierarchical Visual Nesting**: When an environment sets a **Parent Environment** (`inheritsFrom`), bluebyrd automatically nests the child environment directly beneath the parent in the sidebar explorer tree with collapsible expansion chevrons, parent badges (`Parent (N)`), and child badges (`inherits: <parent>`).
-- **Multi-Level Inheritance**: Inheritance works recursively (e.g. `Base` &rarr; `Staging` &rarr; `Staging-Feature`). Child environments inherit all parent variables and headers while selectively overriding specific keys or base URLs.
+- **Multi-Level Inheritance**: Inheritance works recursively (e.g. `Base` → `Staging` → `Staging-Feature`). Child environments inherit all parent variables and headers while selectively overriding specific keys or base URLs.
 - **Active Environment Indicator**: The active environment displays a `✔ Active` badge in the sidebar. You can set any environment as active via its inline checkmark button or right-click context menu.
 
 ### Creating & Scoping Profiles and Environments
