@@ -1,8 +1,14 @@
 # bluebyrd (Beta)
 
-> **Public Beta (v0.1.0)**: bluebyrd is currently in early public beta. We welcome testing, feedback, and issue reports on [GitHub](https://github.com/byrdchermit/blue-byrd-api/issues)!
+> **Public Beta (v0.1.0)**: bluebyrd is currently in early public beta.  
+> 📦 **[Download latest blue-byrd-api-0.1.0.vsix](https://github.com/byrdchermit/blue-byrd-api/releases/latest)** · [Report an Issue](https://github.com/byrdchermit/blue-byrd-api/issues)
 
 bluebyrd is an open-source, local-first API client built natively for VS Code. The goal is to bring a Postman-like workflow directly into the editor with a fast request builder, environment-aware variables, saved collections, and clean response inspection.
+
+### Quick Install
+1. Download **[`blue-byrd-api-0.1.0.vsix`](https://github.com/byrdchermit/blue-byrd-api/releases/latest)**.
+2. In VS Code, open the Extensions view (`Ctrl+Shift+X` / `Cmd+Shift+X`).
+3. Drag and drop the downloaded `.vsix` file into the Extensions sidebar (or click the `...` menu &rarr; **Install from VSIX...**).
 
 ## Key Features
 
