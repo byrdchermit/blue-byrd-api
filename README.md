@@ -42,6 +42,14 @@ bluebyrd is an open-source API client built natively for VS Code. The goal is to
   - Displays a clean update notification with one-click download and changelog view.
   - Manual check on demand anytime via `bluebyrd: Check for Updates` in the Command Palette.
 
+## Documentation
+
+- [User Guide & How-To (`HOWTO.md`)](HOWTO.md) — Comprehensive guide to requests, inheritance, auth, import/export, and more.
+- [Changelog (`CHANGELOG.md`)](CHANGELOG.md) — Release notes and version history.
+- [About bluebyrd (`ABOUT.md`)](ABOUT.md) — Mission, architecture, and open-source principles.
+- [About the Author (`ABOUTME.md`)](ABOUTME.md) — Background and story behind the project.
+
 ## License
 
 MIT
+
