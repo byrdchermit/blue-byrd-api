@@ -7,6 +7,7 @@ import { HttpService } from '../services/httpService';
 import { VariableService } from '../services/variableService';
 import { AuthService } from '../services/authService';
 import { ImportExportService } from '../services/importExportService';
+import { UpdateService } from '../services/updateService';
 import { BlueByrdPanel } from '../views/panels/requestPanel';
 import { BlueByrdSettingsPanel } from '../views/panels/settingsPanel';
 import { BlueByrdHistoryPanel } from '../views/panels/historyPanel';
@@ -20,6 +21,7 @@ export class CommandManager {
   private readonly httpService: HttpService;
   private readonly variableService: VariableService;
   private readonly authService: AuthService;
+  private readonly updateService: UpdateService;
 
   constructor(
     context: vscode.ExtensionContext,
@@ -27,7 +29,8 @@ export class CommandManager {
     treeProvider: BlueByrdExplorerTreeDataProvider,
     httpService: HttpService,
     variableService: VariableService,
-    authService: AuthService
+    authService: AuthService,
+    updateService?: UpdateService
   ) {
     this.context = context;
     this.stateManager = stateManager;
@@ -35,6 +38,7 @@ export class CommandManager {
     this.httpService = httpService;
     this.variableService = variableService;
     this.authService = authService;
+    this.updateService = updateService || new UpdateService(context);
   }
 
   public registerAll(): void {
@@ -598,6 +602,13 @@ export class CommandManager {
         } catch (err: any) {
           vscode.window.showErrorMessage(`Export backup failed: ${err?.message || 'Unknown error'}`);
         }
+      })
+    );
+
+    // Check for Updates
+    s.push(
+      vscode.commands.registerCommand('blueByrdApiClient.checkForUpdates', async () => {
+        await this.updateService.checkForUpdates(true);
       })
     );
   }

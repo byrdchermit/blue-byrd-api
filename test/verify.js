@@ -47,6 +47,7 @@ const { BlueByrdStateManager } = require(path.join(repoDist, 'state/stateManager
 const { VariableService } = require(path.join(repoDist, 'services/variableService'));
 const { AuthService } = require(path.join(repoDist, 'services/authService'));
 const { ImportExportService } = require(path.join(repoDist, 'services/importExportService'));
+const { UpdateService } = require(path.join(repoDist, 'services/updateService'));
 
 console.log('--- Starting bluebyrd Verification Suite ---');
 
@@ -1108,7 +1109,35 @@ console.log('✓ Request panel script integrity & syntax validation passed');
 
   console.log('✓ Legacy Profile Backup & 475-request full export verified');
 
-  console.log('\nAll 30 verification test suites passed successfully! 🎉');
+  // Test 31: UpdateService Semver Logic & Update Command Manifest
+  assert.strictEqual(UpdateService.isNewerVersion('0.2.0', '0.1.0'), true, '0.2.0 should be newer than 0.1.0');
+  assert.strictEqual(UpdateService.isNewerVersion('1.0.0', '0.1.0'), true, '1.0.0 should be newer than 0.1.0');
+  assert.strictEqual(UpdateService.isNewerVersion('0.1.1', '0.1.0'), true, '0.1.1 should be newer than 0.1.0');
+  assert.strictEqual(UpdateService.isNewerVersion('v0.1.5', '0.1.0'), true, 'v0.1.5 should be newer than 0.1.0');
+  assert.strictEqual(UpdateService.isNewerVersion('0.1.0', '0.1.0'), false, '0.1.0 should not be newer than 0.1.0');
+  assert.strictEqual(UpdateService.isNewerVersion('0.0.9', '0.1.0'), false, '0.0.9 should not be newer than 0.1.0');
+  assert.strictEqual(UpdateService.isNewerVersion('v0.1.0', 'v0.1.0'), false, 'v0.1.0 should not be newer than v0.1.0');
+
+  const mockGlobalState = new Map();
+  const mockExtContext = {
+    globalState: {
+      get: (k) => mockGlobalState.get(k),
+      update: (k, v) => { mockGlobalState.set(k, v); return Promise.resolve(); }
+    },
+    extension: {
+      packageJSON: { version: '0.1.0' }
+    }
+  };
+  const updateService = new UpdateService(mockExtContext);
+  assert.strictEqual(updateService.getCurrentVersion(), '0.1.0', 'Current version should match manifest version');
+
+  const pkgJsonUpdated = require('../package.json');
+  const allCommands = pkgJsonUpdated.contributes.commands.map(c => c.command);
+  assert(allCommands.includes('blueByrdApiClient.checkForUpdates'), 'package.json must register blueByrdApiClient.checkForUpdates');
+
+  console.log('✓ UpdateService semver logic & update command manifest verified');
+
+  console.log('\nAll 31 verification test suites passed successfully! 🎉');
   process.exit(0);
 })().catch(err => {
   console.error('Async test suite failure:', err);

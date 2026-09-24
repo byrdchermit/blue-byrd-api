@@ -37,6 +37,10 @@ bluebyrd is an open-source API client built natively for VS Code. The goal is to
   - **OpenAPI 3.0 / Swagger 2.0**: Auto-convert OpenAPI specifications into collections, tag groups into folders, path parameters into `{{param}}`, and schemas into JSON sample bodies.
   - **Native Workspace Backup & Share**: Export/import individual collections or environments, or create whole-workspace backup files with one click.
   - **Interactive Tree & Command Integration**: Inline import/export buttons in the explorer sidebar and Command Palette shortcuts (`bluebyrd: Import JSON`, `bluebyrd: Export Collection as JSON`, `bluebyrd: Export Full Workspace Backup as JSON`).
+- **Automated Update Notifier**:
+  - Automatically checks GitHub Releases for newer versions once per day in the background.
+  - Displays a clean update notification with one-click download and changelog view.
+  - Manual check on demand anytime via `bluebyrd: Check for Updates` in the Command Palette.
 
 ## License
 

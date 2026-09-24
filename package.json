@@ -144,6 +144,11 @@
         "command": "blueByrdApiClient.exportBackup",
         "title": "bluebyrd: Export Full Workspace Backup as JSON",
         "icon": "$(save-all)"
+      },
+      {
+        "command": "blueByrdApiClient.checkForUpdates",
+        "title": "bluebyrd: Check for Updates",
+        "icon": "$(sync)"
       }
     ],
     "menus": {

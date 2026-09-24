@@ -3,6 +3,7 @@ import { BlueByrdStateManager } from './state/stateManager';
 import { VariableService } from './services/variableService';
 import { AuthService } from './services/authService';
 import { HttpService } from './services/httpService';
+import { UpdateService } from './services/updateService';
 import { BlueByrdExplorerTreeDataProvider } from './views/tree/explorerTreeDataProvider';
 import { CommandManager } from './commands/commandManager';
 
@@ -15,6 +16,7 @@ export function activate(context: vscode.ExtensionContext): void {
     const variableService = new VariableService(stateManager);
     const authService = new AuthService(stateManager);
     const httpService = new HttpService(stateManager, variableService, authService);
+    const updateService = new UpdateService(context);
 
     // 2. Initialize Tree Data Provider and Tree View
     const explorerProvider = new BlueByrdExplorerTreeDataProvider(stateManager);
@@ -31,11 +33,17 @@ export function activate(context: vscode.ExtensionContext): void {
       explorerProvider,
       httpService,
       variableService,
-      authService
+      authService,
+      updateService
     );
     commandManager.registerAll();
 
-    // 4. Status Bar Item
+    // 4. Check for Updates in Background (throttled to once every 24 hours)
+    updateService.checkForUpdates(false).catch((err) => {
+      console.warn('[bluebyrd] Background update check error:', err?.message);
+    });
+
+    // 5. Status Bar Item
     const statusBarItem = vscode.window.createStatusBarItem(
       vscode.StatusBarAlignment.Right,
       100
