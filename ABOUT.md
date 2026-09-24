@@ -1,6 +1,6 @@
-# About bluebyrd
+# About bluebyrd (Beta)
 
-**bluebyrd** is an open-source, local-first API client built natively for Visual Studio Code.
+**bluebyrd** is an open-source, local-first API client built natively for Visual Studio Code, currently in Public Beta.
 
 Designed for developers who want a fast, focused, and intuitive API workbench without leaving their code editor, bluebyrd combines the power of tools like Postman with the simplicity, speed, and privacy of VS Code.
 

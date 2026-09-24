@@ -1,7 +1,7 @@
 {
   "name": "blue-byrd-api",
-  "displayName": "bluebyrd",
-  "description": "A native, open-source API client for VS Code inspired by Postman.",
+  "displayName": "bluebyrd (Beta)",
+  "description": "A native, local-first API client for VS Code with hierarchical inheritance, unified auth, and universal JSON import/export (Public Beta).",
   "version": "0.1.0",
   "publisher": "byrdchermit",
   "icon": "media/icon.png",

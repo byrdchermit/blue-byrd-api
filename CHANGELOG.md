@@ -19,9 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.0] - 2026-09-24
 
-### Initial Release
+### Initial Release (Public Beta)
 
-Welcome to the initial release of **bluebyrd**, the lightweight, native, and local-first API client for Visual Studio Code!
+Welcome to the initial public beta release of **bluebyrd**, the lightweight, native, and local-first API client for Visual Studio Code!
 
 #### Added
 - **Hierarchical Variable & Header Inheritance Engine**:
