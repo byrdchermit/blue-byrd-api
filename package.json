@@ -2,7 +2,7 @@
   "name": "blue-byrd-api",
   "displayName": "bluebyrd (Beta)",
   "description": "A native, local-first API client for VS Code with hierarchical inheritance, unified auth, and universal JSON import/export (Public Beta).",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "byrdchermit",
   "icon": "media/icon.png",
   "repository": {
@@ -23,7 +23,11 @@
   "main": "./dist/extension.js",
   "activationEvents": [
     "onStartupFinished",
-    "onView:blueByrdApiClientExplorer"
+    "onView:blueByrdApiClientExplorer",
+    "onView:blueByrdProfiles",
+    "onView:blueByrdCollections",
+    "onView:blueByrdEnvironments",
+    "onView:blueByrdHistory"
   ],
   "capabilities": {
     "untrustedWorkspaces": {
@@ -44,9 +48,21 @@
     "views": {
       "blueByrdApiClient": [
         {
-          "id": "blueByrdApiClientExplorer",
-          "name": "API Client",
-          "type": "tree"
+          "id": "blueByrdProfiles",
+          "name": "Profiles"
+        },
+        {
+          "id": "blueByrdCollections",
+          "name": "Collections"
+        },
+        {
+          "id": "blueByrdEnvironments",
+          "name": "Environments"
+        },
+        {
+          "id": "blueByrdHistory",
+          "name": "History",
+          "visibility": "collapsed"
         }
       ]
     },
@@ -75,8 +91,33 @@
         "icon": "$(add)"
       },
       {
+        "command": "blueByrdApiClient.manageTokens",
+        "title": "bluebyrd: Manage OAuth Tokens",
+        "icon": "$(key)"
+      },
+      {
+        "command": "blueByrdApiClient.deleteToken",
+        "title": "bluebyrd: Delete Token",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "blueByrdApiClient.clearProfileTokens",
+        "title": "bluebyrd: Clear Profile Tokens",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "blueByrdApiClient.copyToken",
+        "title": "bluebyrd: Copy Access Token",
+        "icon": "$(copy)"
+      },
+      {
         "command": "blueByrdApiClient.createEnvironment",
         "title": "bluebyrd: New Environment",
+        "icon": "$(add)"
+      },
+      {
+        "command": "blueByrdApiClient.createChildEnvironment",
+        "title": "bluebyrd: New Child Environment",
         "icon": "$(add)"
       },
       {
@@ -118,7 +159,8 @@
       },
       {
         "command": "blueByrdApiClient.editFolder",
-        "title": "bluebyrd: Edit Folder Settings"
+        "title": "bluebyrd: Edit Folder Settings",
+        "icon": "$(edit)"
       },
       {
         "command": "blueByrdApiClient.openHistoryPanel",
@@ -179,151 +221,296 @@
         "command": "blueByrdApiClient.assignProfileScope",
         "title": "bluebyrd: Assign Profile Scope...",
         "icon": "$(organization)"
+      },
+      {
+        "command": "blueByrdApiClient.moveItemUp",
+        "title": "bluebyrd: Move Up (Reorder)",
+        "icon": "$(arrow-up)"
+      },
+      {
+        "command": "blueByrdApiClient.moveItemDown",
+        "title": "bluebyrd: Move Down (Reorder)",
+        "icon": "$(arrow-down)"
+      },
+      {
+        "command": "blueByrdApiClient.moveRequestTo",
+        "title": "bluebyrd: Move Request To...",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "blueByrdApiClient.moveFolderTo",
+        "title": "bluebyrd: Move Folder To...",
+        "icon": "$(folder)"
+      },
+      {
+        "command": "blueByrdApiClient.cloneEnvironment",
+        "title": "bluebyrd: Clone Environment",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "blueByrdApiClient.cloneRequest",
+        "title": "bluebyrd: Clone Request",
+        "icon": "$(copy)"
       }
     ],
     "menus": {
       "view/title": [
         {
+          "command": "blueByrdApiClient.manageTokens",
+          "when": "view == blueByrdProfiles",
+          "group": "navigation@1"
+        },
+        {
+          "command": "blueByrdApiClient.createProfile",
+          "when": "view == blueByrdProfiles",
+          "group": "navigation@2"
+        },
+        {
+          "command": "blueByrdApiClient.refreshExplorer",
+          "when": "view == blueByrdProfiles",
+          "group": "navigation@3"
+        },
+        {
           "command": "blueByrdApiClient.newRequest",
-          "when": "view == blueByrdApiClientExplorer",
+          "when": "view == blueByrdCollections",
           "group": "navigation@1"
         },
         {
           "command": "blueByrdApiClient.createCollection",
-          "when": "view == blueByrdApiClientExplorer",
+          "when": "view == blueByrdCollections",
           "group": "navigation@2"
         },
         {
           "command": "blueByrdApiClient.importJson",
-          "when": "view == blueByrdApiClientExplorer",
+          "when": "view == blueByrdCollections",
           "group": "navigation@3"
         },
         {
           "command": "blueByrdApiClient.refreshExplorer",
-          "when": "view == blueByrdApiClientExplorer",
+          "when": "view == blueByrdCollections",
           "group": "navigation@4"
+        },
+        {
+          "command": "blueByrdApiClient.createEnvironment",
+          "when": "view == blueByrdEnvironments",
+          "group": "navigation@1"
+        },
+        {
+          "command": "blueByrdApiClient.importJson",
+          "when": "view == blueByrdEnvironments",
+          "group": "navigation@2"
+        },
+        {
+          "command": "blueByrdApiClient.refreshExplorer",
+          "when": "view == blueByrdEnvironments",
+          "group": "navigation@3"
+        },
+        {
+          "command": "blueByrdApiClient.openHistoryPanel",
+          "when": "view == blueByrdHistory",
+          "group": "navigation@1"
+        },
+        {
+          "command": "blueByrdApiClient.clearHistory",
+          "when": "view == blueByrdHistory",
+          "group": "navigation@2"
         }
       ],
       "view/item/context": [
         {
           "command": "blueByrdApiClient.createProfile",
-          "when": "view == blueByrdApiClientExplorer && viewItem == bluebyrd.section.profiles",
+          "when": "viewItem == bluebyrd.section.profiles",
           "group": "inline@1"
         },
         {
-          "command": "blueByrdApiClient.switchActiveProfile",
-          "when": "view == blueByrdApiClientExplorer && (viewItem == bluebyrd.section.profiles || viewItem == bluebyrd.activeFilter)",
+          "command": "blueByrdApiClient.createEnvironment",
+          "when": "viewItem == bluebyrd.section.environments",
+          "group": "inline@1"
+        },
+        {
+          "command": "blueByrdApiClient.importJson",
+          "when": "viewItem == bluebyrd.section.environments",
+          "group": "inline@3"
+        },
+        {
+          "command": "blueByrdApiClient.importJson",
+          "when": "viewItem == bluebyrd.section.collections",
           "group": "inline@2"
         },
         {
           "command": "blueByrdApiClient.setActiveProfile",
-          "when": "view == blueByrdApiClientExplorer && viewItem == bluebyrd.profile",
+          "when": "view == blueByrdProfiles && viewItem == bluebyrd.profile",
           "group": "inline@1"
+        },
+        {
+          "command": "blueByrdApiClient.manageTokens",
+          "when": "view == blueByrdProfiles && viewItem == bluebyrd.profile",
+          "group": "inline@2"
         },
         {
           "command": "blueByrdApiClient.createProfile",
-          "when": "view == blueByrdApiClientExplorer && viewItem == bluebyrd.profile",
+          "when": "view == blueByrdProfiles && viewItem == bluebyrd.profile",
           "group": "2_manage@1"
         },
         {
-          "command": "blueByrdApiClient.createEnvironment",
-          "when": "view == blueByrdApiClientExplorer && viewItem == bluebyrd.section.environments",
-          "group": "inline@1"
-        },
-        {
-          "command": "blueByrdApiClient.switchActiveEnvironment",
-          "when": "view == blueByrdApiClientExplorer && viewItem == bluebyrd.section.environments",
-          "group": "inline@2"
-        },
-        {
-          "command": "blueByrdApiClient.importJson",
-          "when": "view == blueByrdApiClientExplorer && viewItem == bluebyrd.section.environments",
-          "group": "inline@3"
-        },
-        {
-          "command": "blueByrdApiClient.setActiveEnvironment",
-          "when": "view == blueByrdApiClientExplorer && (viewItem == bluebyrd.environment || viewItem == bluebyrd.environment.parent)",
-          "group": "inline@1"
-        },
-        {
-          "command": "blueByrdApiClient.createEnvironment",
-          "when": "view == blueByrdApiClientExplorer && (viewItem == bluebyrd.environment || viewItem == bluebyrd.environment.parent)",
-          "group": "2_manage@1"
-        },
-        {
-          "command": "blueByrdApiClient.assignProfileScope",
-          "when": "view == blueByrdApiClientExplorer && (viewItem == bluebyrd.environment || viewItem == bluebyrd.environment.parent || viewItem == bluebyrd.collection)",
+          "command": "blueByrdApiClient.clearProfileTokens",
+          "when": "view == blueByrdProfiles && viewItem == bluebyrd.profile",
           "group": "2_manage@2"
         },
         {
+          "command": "blueByrdApiClient.editProfile",
+          "when": "view == blueByrdProfiles && viewItem == bluebyrd.profile",
+          "group": "1_settings"
+        },
+        {
+          "command": "blueByrdApiClient.deleteItem",
+          "when": "view == blueByrdProfiles && viewItem == bluebyrd.profile",
+          "group": "inline@9"
+        },
+        {
+          "command": "blueByrdApiClient.copyToken",
+          "when": "view == blueByrdProfiles && viewItem == bluebyrd.token",
+          "group": "inline@1"
+        },
+        {
+          "command": "blueByrdApiClient.deleteToken",
+          "when": "view == blueByrdProfiles && viewItem == bluebyrd.token",
+          "group": "inline@9"
+        },
+        {
+          "command": "blueByrdApiClient.setActiveEnvironment",
+          "when": "view == blueByrdEnvironments && (viewItem == bluebyrd.environment || viewItem == bluebyrd.environment.parent)",
+          "group": "inline@1"
+        },
+        {
+          "command": "blueByrdApiClient.createChildEnvironment",
+          "when": "view == blueByrdEnvironments && (viewItem == bluebyrd.environment || viewItem == bluebyrd.environment.parent)",
+          "group": "2_manage@1"
+        },
+        {
+          "command": "blueByrdApiClient.createEnvironment",
+          "when": "view == blueByrdEnvironments && (viewItem == bluebyrd.environment || viewItem == bluebyrd.environment.parent)",
+          "group": "2_manage@2"
+        },
+        {
+          "command": "blueByrdApiClient.assignProfileScope",
+          "when": "view == blueByrdEnvironments && (viewItem == bluebyrd.environment || viewItem == bluebyrd.environment.parent)",
+          "group": "2_manage@3"
+        },
+        {
           "command": "blueByrdApiClient.exportEnvironment",
-          "when": "view == blueByrdApiClientExplorer && (viewItem == bluebyrd.environment || viewItem == bluebyrd.environment.parent)",
+          "when": "view == blueByrdEnvironments && (viewItem == bluebyrd.environment || viewItem == bluebyrd.environment.parent)",
           "group": "inline@2"
         },
         {
-          "command": "blueByrdApiClient.createCollection",
-          "when": "view == blueByrdApiClientExplorer && viewItem == bluebyrd.section.collections",
-          "group": "inline@1"
+          "command": "blueByrdApiClient.cloneEnvironment",
+          "when": "view == blueByrdEnvironments && (viewItem == bluebyrd.environment || viewItem == bluebyrd.environment.parent)",
+          "group": "inline@3"
         },
         {
-          "command": "blueByrdApiClient.importJson",
-          "when": "view == blueByrdApiClientExplorer && viewItem == bluebyrd.section.collections",
-          "group": "inline@2"
+          "command": "blueByrdApiClient.cloneEnvironment",
+          "when": "view == blueByrdEnvironments && (viewItem == bluebyrd.environment || viewItem == bluebyrd.environment.parent)",
+          "group": "2_manage@4"
         },
         {
-          "command": "blueByrdApiClient.openHistoryPanel",
-          "when": "view == blueByrdApiClientExplorer && viewItem == bluebyrd.section.history",
-          "group": "inline@1"
+          "command": "blueByrdApiClient.editEnvironment",
+          "when": "view == blueByrdEnvironments && (viewItem == bluebyrd.environment || viewItem == bluebyrd.environment.parent)",
+          "group": "1_settings"
         },
         {
-          "command": "blueByrdApiClient.clearHistory",
-          "when": "view == blueByrdApiClientExplorer && viewItem == bluebyrd.section.history",
-          "group": "inline@2"
+          "command": "blueByrdApiClient.deleteItem",
+          "when": "view == blueByrdEnvironments && (viewItem == bluebyrd.environment || viewItem == bluebyrd.environment.parent)",
+          "group": "inline@9"
         },
         {
           "command": "blueByrdApiClient.newRequest",
-          "when": "view == blueByrdApiClientExplorer && (viewItem == bluebyrd.collection || viewItem == bluebyrd.folder)",
+          "when": "view == blueByrdCollections && (viewItem == bluebyrd.collection || viewItem == bluebyrd.folder)",
           "group": "inline@1"
         },
         {
           "command": "blueByrdApiClient.createFolder",
-          "when": "view == blueByrdApiClientExplorer && viewItem == bluebyrd.collection",
+          "when": "view == blueByrdCollections && viewItem == bluebyrd.collection",
           "group": "inline@2"
         },
         {
           "command": "blueByrdApiClient.exportCollection",
-          "when": "view == blueByrdApiClientExplorer && viewItem == bluebyrd.collection",
+          "when": "view == blueByrdCollections && viewItem == bluebyrd.collection",
           "group": "inline@3"
         },
         {
-          "command": "blueByrdApiClient.duplicateRequest",
+          "command": "blueByrdApiClient.assignProfileScope",
+          "when": "view == blueByrdCollections && viewItem == bluebyrd.collection",
+          "group": "2_manage@2"
+        },
+        {
+          "command": "blueByrdApiClient.cloneRequest",
+          "when": "view == blueByrdCollections && viewItem == bluebyrd.request",
+          "group": "inline@1"
+        },
+        {
+          "command": "blueByrdApiClient.cloneRequest",
+          "when": "view == blueByrdCollections && viewItem == bluebyrd.request",
+          "group": "2_manage@1"
+        },
+        {
+          "command": "blueByrdApiClient.cloneRequest",
           "when": "view == blueByrdApiClientExplorer && viewItem == bluebyrd.request",
           "group": "inline@1"
         },
         {
-          "command": "blueByrdApiClient.deleteItem",
-          "when": "view == blueByrdApiClientExplorer && (viewItem == bluebyrd.request || viewItem == bluebyrd.folder || viewItem == bluebyrd.collection || viewItem == bluebyrd.profile || viewItem == bluebyrd.environment || viewItem == bluebyrd.environment.parent || viewItem == bluebyrd.historyItem)",
-          "group": "inline@9"
-        },
-        {
-          "command": "blueByrdApiClient.editProfile",
-          "when": "view == blueByrdApiClientExplorer && viewItem == bluebyrd.profile",
-          "group": "1_settings"
-        },
-        {
-          "command": "blueByrdApiClient.editEnvironment",
-          "when": "view == blueByrdApiClientExplorer && (viewItem == bluebyrd.environment || viewItem == bluebyrd.environment.parent)",
-          "group": "1_settings"
+          "command": "blueByrdApiClient.cloneRequest",
+          "when": "view == blueByrdApiClientExplorer && viewItem == bluebyrd.request",
+          "group": "2_manage@1"
         },
         {
           "command": "blueByrdApiClient.editCollection",
-          "when": "view == blueByrdApiClientExplorer && viewItem == bluebyrd.collection",
+          "when": "view == blueByrdCollections && viewItem == bluebyrd.collection",
           "group": "1_settings"
         },
         {
           "command": "blueByrdApiClient.editFolder",
-          "when": "view == blueByrdApiClientExplorer && viewItem == bluebyrd.folder",
+          "when": "(view == blueByrdCollections || view == blueByrdApiClientExplorer) && viewItem == bluebyrd.folder",
           "group": "1_settings"
+        },
+        {
+          "command": "blueByrdApiClient.editFolder",
+          "when": "(view == blueByrdCollections || view == blueByrdApiClientExplorer) && viewItem == bluebyrd.folder",
+          "group": "inline@1"
+        },
+        {
+          "command": "blueByrdApiClient.deleteItem",
+          "when": "view == blueByrdCollections && (viewItem == bluebyrd.request || viewItem == bluebyrd.folder || viewItem == bluebyrd.collection)",
+          "group": "inline@9"
+        },
+        {
+          "command": "blueByrdApiClient.moveItemUp",
+          "when": "view == blueByrdCollections && (viewItem == bluebyrd.collection || viewItem == bluebyrd.folder || viewItem == bluebyrd.request)",
+          "group": "3_reorder@1"
+        },
+        {
+          "command": "blueByrdApiClient.moveItemDown",
+          "when": "view == blueByrdCollections && (viewItem == bluebyrd.collection || viewItem == bluebyrd.folder || viewItem == bluebyrd.request)",
+          "group": "3_reorder@2"
+        },
+        {
+          "command": "blueByrdApiClient.moveRequestTo",
+          "when": "view == blueByrdCollections && viewItem == bluebyrd.request",
+          "group": "3_reorder@3"
+        },
+        {
+          "command": "blueByrdApiClient.moveFolderTo",
+          "when": "view == blueByrdCollections && viewItem == bluebyrd.folder",
+          "group": "3_reorder@3"
+        },
+        {
+          "command": "blueByrdApiClient.openHistoryPanel",
+          "when": "view == blueByrdHistory && viewItem == bluebyrd.historyItem",
+          "group": "inline@1"
+        },
+        {
+          "command": "blueByrdApiClient.deleteItem",
+          "when": "view == blueByrdHistory && viewItem == bluebyrd.historyItem",
+          "group": "inline@9"
         }
       ]
     }

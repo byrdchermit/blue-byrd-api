@@ -71,6 +71,25 @@ export class BlueByrdPanel {
     this.currentPanel = instance;
   }
 
+  /**
+   * Push the newly selected active environment to every open request panel.
+   * The webview will update its dropdown and re-fetch inherited variables.
+   */
+  public static broadcastActiveEnvironment(envName: string): void {
+    this.panels.forEach((p) => {
+      p.panel.webview.postMessage({ type: 'activeEnvironmentChanged', envName });
+    });
+  }
+
+  /**
+   * Push the newly selected active profile to every open request panel.
+   */
+  public static broadcastActiveProfile(profileId: string, profileName: string): void {
+    this.panels.forEach((p) => {
+      p.panel.webview.postMessage({ type: 'activeProfileChanged', profileId, profileName });
+    });
+  }
+
   private constructor(
     panel: vscode.WebviewPanel,
     extensionUri: vscode.Uri,
@@ -90,14 +109,17 @@ export class BlueByrdPanel {
     this.panelKey = panelKey;
 
     // Pre-calculate initial inherited variables and headers for inspector
-    const initialEnv = initialContext?.environment;
-    const initialCol = initialContext?.collection;
-    const initialFolder = initialContext?.folder;
+    const state = this.stateManager.getState();
+    const envKeys = Object.keys(state.environments);
+    const initialEnv = initialContext?.environment || state.activeEnvironmentName || envKeys[0];
+    const initialCol = initialContext?.collection || state.collections[0]?.name;
+    const initialFolder = initialContext?.folder && initialContext.folder !== 'Root' ? initialContext.folder : undefined;
     const initialVars = initialContext?.variables || [];
     const initialHeaders = initialContext?.headers || {};
+    const initialProfile = initialContext?.profileId || initialContext?.profile || (state.activeProfileId !== 'all' ? state.activeProfileId : undefined) || state.profiles[0]?.id;
 
     const varDetails = this.variableService.resolveVariablesDetailed(
-      initialContext?.profileId || initialContext?.profile,
+      initialProfile,
       initialEnv,
       initialCol,
       initialFolder,
@@ -113,7 +135,7 @@ export class BlueByrdPanel {
     // Set HTML content
     this.panel.webview.html = getRequestPanelHtml(
       initialContext,
-      this.stateManager.getState(),
+      state,
       varDetails.inherited,
       headerDetails.inherited
     );
@@ -162,6 +184,8 @@ export class BlueByrdPanel {
               auth: payload.auth,
               notes: payload.notes,
               variables: payload.variables,
+              preRequestScript: payload.preRequestScript,
+              postResponseScript: payload.postResponseScript,
             };
 
             const saved = this.stateManager.saveRequest(savedItem, payload.collection, payload.folder);
@@ -224,10 +248,20 @@ export class BlueByrdPanel {
               vars
             );
 
+            let resolvedUrl = interpolated.url.trim();
+            if (resolvedUrl.startsWith('/') && vars['baseUrl']) {
+              resolvedUrl = `${vars['baseUrl'].replace(/\/+$/, '')}${resolvedUrl}`;
+            }
+            if (!resolvedUrl.startsWith('http://') && !resolvedUrl.startsWith('https://')) {
+              if (resolvedUrl.startsWith('localhost') || /^(?:127\.0\.0\.1|\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?::\d+)?(?:\/.*)?$/.test(resolvedUrl)) {
+                resolvedUrl = `http://${resolvedUrl}`;
+              }
+            }
+
             this.panel.webview.postMessage({
               type: 'preview',
               preview: {
-                resolvedUrl: interpolated.url,
+                resolvedUrl: resolvedUrl,
                 method: payload.method,
                 resolvedHeaders: interpolated.headers,
                 resolvedBody: interpolated.body,
@@ -266,7 +300,17 @@ export class BlueByrdPanel {
               vars
             );
 
-            let curl = `curl -X ${payload.method || 'GET'} "${interpolated.url}"`;
+            let resolvedUrl = interpolated.url.trim();
+            if (resolvedUrl.startsWith('/') && vars['baseUrl']) {
+              resolvedUrl = `${vars['baseUrl'].replace(/\/+$/, '')}${resolvedUrl}`;
+            }
+            if (!resolvedUrl.startsWith('http://') && !resolvedUrl.startsWith('https://')) {
+              if (resolvedUrl.startsWith('localhost') || /^(?:127\.0\.0\.1|\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?::\d+)?(?:\/.*)?$/.test(resolvedUrl)) {
+                resolvedUrl = `http://${resolvedUrl}`;
+              }
+            }
+
+            let curl = `curl -X ${payload.method || 'GET'} "${resolvedUrl}"`;
             Object.entries(interpolated.headers).forEach(([k, v]) => {
               curl += ` -H "${k}: ${v.replace(/"/g, '\\"')}"`;
             });

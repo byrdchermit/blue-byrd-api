@@ -7,29 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased]
+---
+
+## [0.2.0] - 2026-09-24
 
 ### Added
-- **Visual Parent → Child Environment Tree Nesting**:
-  - Environments inheriting from a parent environment via `inheritsFrom` are now rendered nested directly beneath their parent in the sidebar explorer tree.
-  - Multi-level recursive nesting support with cycle-safe ancestry protection.
-  - Parent environments display expansion chevrons and badges indicating child count (`Parent (N)`), while child environments display inheritance tags (`inherits: <parent>`).
-  - Active environment visual indicator (`✔ Active`) and pass icon.
-- **Profile-Scoped Workspaces & Active Scope Filter**:
-  - Top-level active profile switcher (`Scope: <Profile>` / `Scope: All Profiles (Global)`) filters the sidebar to show only that profile's environments and collections.
-  - Environments and Collections can now be scoped to a specific Profile or marked `Global / Shared (All Profiles)`.
-  - Collections remain environment-agnostic at the profile level so requests can run across Dev, Staging, and Prod without duplication.
-  - Context menu and command palette actions to switch profile scope (`bluebyrd: Switch Active Profile Scope`), assign scope (`bluebyrd: Assign Profile Scope...`), and set active environments directly from tree items.
-- **Dynamic Context Status Bar Item**:
-  - Status bar item displaying `$(account) [Profile] $(globe) [Environment]`.
-  - Clicking the status bar item opens a quick switcher to seamlessly toggle profile scope or active environment.
-  - Automatically synchronizes with explorer tree updates.
+- **Pre-Request & Post-Response Scripting Engine**:
+  - Sandboxed JavaScript execution engine powered by Node's `node:vm` with timeout protection.
+  - Dual global API support: native **`bb`** and Postman **`pm`** syntax parity.
+  - Pre-request mutation of headers, body, URL, and dynamic environment variables (e.g. HMAC signatures, timestamps).
+  - Post-response testing and assertion suite (`bb.test`, `bb.expect`, `pm.test`, `pm.expect`).
+  - Automatic environment variable extraction and persistence (`bb.environment.set`).
+  - Response Inspector **Tests** tab with pass/fail badges (`✔` / `✖`) and detailed assertion error messages.
+  - Response Inspector **Console** tab capturing timestamped logs (`log`, `info`, `warn`, `error`).
+  - Quick snippet insert chips in Request Builder (`+ Set Env Var`, `+ Get Env Var`, `+ Status is 200`, `+ Parse JSON`, `+ Set Header`, `+ SHA-256`).
+- **Breakout Native View Panes Architecture**:
+  - Dedicated native sidebar tree views for **Profiles**, **Collections**, **Environments**, and **History**.
+  - Synchronized tree coordinator ensuring seamless live state updates across all breakout panes.
+- **Drag & Drop Reordering**:
+  - Full native drag-and-drop reordering for Collections, Folders, and Requests.
+  - Smooth reordering and moving requests between folders and collections directly in the sidebar tree.
+- **Profile OAuth Token Vault**:
+  - Dedicated token management with automatic auth header resolution.
+  - Auto-injected authorization tokens for requests inheriting from profile auth.
+- **Environment & Request Cloning**:
+  - 1-click clone actions for environments and requests with hierarchy and parameter preservation.
+- **Live URL Token Interpolation Preview**:
+  - Interactive preview bar showing real-time token resolution directly beneath the URL input.
+  - Clear visual warning and highlighting for unresolved tokens (`{{unresolved}}`).
+- **Grouped Collapsible Inherited Variables & Headers**:
+  - Accordion sections grouped by source (`Profile`, `Environment`, `Collection`, `Folder`, `Dynamic`).
+  - Built-in dynamic variables collapsed by default; all other groups expanded with persistent toggle states.
+- **Live Active Environment & Profile Synchronization**:
+  - Open Request Panels live-update their environment and profile dropdowns and re-resolve variables immediately when changed in the sidebar.
+- **Rich Network Error Diagnostics**:
+  - Intelligent classification of OS-level network errors (`ECONNREFUSED`, `ETIMEDOUT`, `ENETUNREACH`, `ENOTFOUND`, `AbortError`).
+  - Red-tinted diagnostic card in Response Inspector with actionable troubleshooting guidance.
+- **Sidebar UX Improvements**:
+  - Collections collapsed by default in the breakout view.
+  - History sidebar pane condensed into a clean action link to open the full History Inspector.
+  - Folders now expand and collapse on left-click; folder editing accessible via right-click context menu and hover icon.
 
-### Planned
-- Pre-request and post-request test assertion scripting.
-- Git-backed environment and collection synchronization (`.bluebyrd/` workspace configs).
-- GraphQL query builder and schema introspection.
-- WebSocket and Server-Sent Events (SSE) streaming viewer.
+### Changed
+- Improved variable resolution precedence order to ensure Environment variables take priority over Collection variables.
+- Hardened Webview script security and Prototype Pollution protections.
 
 ---
 

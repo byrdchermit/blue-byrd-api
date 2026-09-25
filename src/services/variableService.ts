@@ -119,8 +119,8 @@ export class VariableService {
 
   /**
    * Resolves the combined dictionary of variables taking into account the full inheritance hierarchy:
-   * Profile -> Environment Chain (Parent -> Child, including baseUrl and apiKey) -> Collection -> Folder -> Request
-   * Higher levels in the chain override lower levels.
+   * Profile -> Collection -> Folder -> Environment Chain (Parent -> Child, including baseUrl and apiKey) -> Request
+   * Higher levels in the chain override lower levels (Environment overrides Collection/Folder defaults).
    */
   public resolveVariables(
     profileNameOrId?: string,
@@ -169,7 +169,7 @@ export class VariableService {
       });
     });
 
-    // 1. Profile variables
+    // 1. Profile variables (global defaults)
     const profile = this.stateManager.getProfile(profileNameOrId);
     if (profile?.variables) {
       Object.entries(profile.variables).forEach(([k, v]) => {
@@ -186,7 +186,46 @@ export class VariableService {
       });
     }
 
-    // 2. Environment chain (parent environments first, active environment last)
+    // 2. Collection variables (collection defaults)
+    const collection = this.stateManager.getCollection(collectionNameOrId);
+    if (collection?.variables) {
+      Object.entries(collection.variables).forEach(([k, v]) => {
+        if (k && v !== undefined) {
+          const val = String(v);
+          resolved[k] = val;
+          inherited.push({
+            key: k,
+            value: val,
+            source: 'collection',
+            sourceName: `Collection: ${collection.name}`,
+          });
+        }
+      });
+    }
+
+    // 3. Folder variables (folder defaults)
+    let folder: CollectionFolder | undefined;
+    if (collection && folderNameOrId) {
+      folder = collection.folders.find(
+        (f) => f.id === folderNameOrId || f.name === folderNameOrId
+      );
+      if (folder?.variables) {
+        Object.entries(folder.variables).forEach(([k, v]) => {
+          if (k && v !== undefined) {
+            const val = String(v);
+            resolved[k] = val;
+            inherited.push({
+              key: k,
+              value: val,
+              source: 'folder',
+              sourceName: `Folder: ${folder!.name}`,
+            });
+          }
+        });
+      }
+    }
+
+    // 4. Environment chain (parent environments first, active environment last - overrides collection/folder defaults)
     const envChain = this.getEnvironmentChain(environmentNameOrId);
     envChain.forEach((env, index) => {
       const isParent = index < envChain.length - 1;
@@ -230,45 +269,6 @@ export class VariableService {
       }
     });
 
-    // 3. Collection variables
-    const collection = this.stateManager.getCollection(collectionNameOrId);
-    if (collection?.variables) {
-      Object.entries(collection.variables).forEach(([k, v]) => {
-        if (k && v !== undefined) {
-          const val = String(v);
-          resolved[k] = val;
-          inherited.push({
-            key: k,
-            value: val,
-            source: 'collection',
-            sourceName: `Collection: ${collection.name}`,
-          });
-        }
-      });
-    }
-
-    // 4. Folder variables
-    let folder: CollectionFolder | undefined;
-    if (collection && folderNameOrId) {
-      folder = collection.folders.find(
-        (f) => f.id === folderNameOrId || f.name === folderNameOrId
-      );
-      if (folder?.variables) {
-        Object.entries(folder.variables).forEach(([k, v]) => {
-          if (k && v !== undefined) {
-            const val = String(v);
-            resolved[k] = val;
-            inherited.push({
-              key: k,
-              value: val,
-              source: 'folder',
-              sourceName: `Folder: ${folder!.name}`,
-            });
-          }
-        });
-      }
-    }
-
     // 5. Request-level variables (highest precedence)
     const overriddenKeys: string[] = [];
     if (Array.isArray(requestVariables)) {
@@ -305,8 +305,8 @@ export class VariableService {
   }
 
   /**
-   * Resolves the combined headers from Parent Environments -> Active Environment -> Collection -> Folder -> Request.
-   * Handles case-insensitive header overriding.
+   * Resolves the combined headers from Collection -> Folder -> Parent Environments -> Active Environment -> Request.
+   * Handles case-insensitive header overriding (Environment overrides Collection/Folder defaults).
    */
   public resolveHeaders(
     environmentNameOrId?: string,
@@ -346,7 +346,43 @@ export class VariableService {
       merged[key] = value;
     };
 
-    // 1. Environment chain
+    // 1. Collection headers (collection defaults)
+    const collection = this.stateManager.getCollection(collectionNameOrId);
+    if (collection?.headers) {
+      Object.entries(collection.headers).forEach(([k, v]) => {
+        if (k && v !== undefined) {
+          setHeader(k, String(v));
+          inherited.push({
+            key: k,
+            value: String(v),
+            source: 'collection',
+            sourceName: `Collection: ${collection.name}`,
+          });
+        }
+      });
+    }
+
+    // 2. Folder headers (folder defaults)
+    if (collection && folderNameOrId) {
+      const folder = collection.folders.find(
+        (f) => f.id === folderNameOrId || f.name === folderNameOrId
+      );
+      if (folder?.headers) {
+        Object.entries(folder.headers).forEach(([k, v]) => {
+          if (k && v !== undefined) {
+            setHeader(k, String(v));
+            inherited.push({
+              key: k,
+              value: String(v),
+              source: 'folder',
+              sourceName: `Folder: ${folder.name}`,
+            });
+          }
+        });
+      }
+    }
+
+    // 3. Environment chain (parent environments first, active environment last - overrides collection/folder defaults)
     const envChain = this.getEnvironmentChain(environmentNameOrId);
     envChain.forEach((env, index) => {
       const isParent = index < envChain.length - 1;
@@ -368,42 +404,6 @@ export class VariableService {
         });
       }
     });
-
-    // 2. Collection headers
-    const collection = this.stateManager.getCollection(collectionNameOrId);
-    if (collection?.headers) {
-      Object.entries(collection.headers).forEach(([k, v]) => {
-        if (k && v !== undefined) {
-          setHeader(k, String(v));
-          inherited.push({
-            key: k,
-            value: String(v),
-            source: 'collection',
-            sourceName: `Collection: ${collection.name}`,
-          });
-        }
-      });
-    }
-
-    // 3. Folder headers
-    if (collection && folderNameOrId) {
-      const folder = collection.folders.find(
-        (f) => f.id === folderNameOrId || f.name === folderNameOrId
-      );
-      if (folder?.headers) {
-        Object.entries(folder.headers).forEach(([k, v]) => {
-          if (k && v !== undefined) {
-            setHeader(k, String(v));
-            inherited.push({
-              key: k,
-              value: String(v),
-              source: 'folder',
-              sourceName: `Folder: ${folder.name}`,
-            });
-          }
-        });
-      }
-    }
 
     // 4. Request headers (highest precedence)
     const overriddenKeys: string[] = [];

@@ -1,24 +1,28 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { AuthSettings, BodyType, FormDataItem, RequestItem, ResponseMetadata, VariableItem } from '../types';
+import { AuthSettings, BodyType, FormDataItem, RequestItem, ResponseMetadata, ScriptConsoleLog, TestResultItem, VariableItem } from '../types';
 import { BlueByrdStateManager } from '../state/stateManager';
 import { VariableService } from './variableService';
 import { AuthService } from './authService';
+import { ScriptService } from './scriptService';
 import { BlueByrdHistoryPanel } from '../views/panels/historyPanel';
 
 export class HttpService {
   private readonly stateManager: BlueByrdStateManager;
   private readonly variableService: VariableService;
   private readonly authService: AuthService;
+  private readonly scriptService: ScriptService;
 
   constructor(
     stateManager: BlueByrdStateManager,
     variableService: VariableService,
-    authService: AuthService
+    authService: AuthService,
+    scriptService?: ScriptService
   ) {
     this.stateManager = stateManager;
     this.variableService = variableService;
     this.authService = authService;
+    this.scriptService = scriptService || new ScriptService();
   }
 
   /**
@@ -40,12 +44,19 @@ export class HttpService {
     requestId?: string;
     auth?: AuthSettings;
     variables?: VariableItem[];
+    preRequestScript?: string;
+    postResponseScript?: string;
   }): Promise<ResponseMetadata> {
-    const method = (params.method || 'GET').toUpperCase();
-    const rawUrl = params.url || '';
+    let method = (params.method || 'GET').toUpperCase();
+    let rawUrl = params.url || '';
+    let incomingHeaders: Record<string, string> = { ...(params.headers || {}) };
+    let incomingBody = params.body;
+
+    const allConsoleLogs: ScriptConsoleLog[] = [];
+    let testResults: TestResultItem[] = [];
 
     // 1. Resolve combined variables
-    const variables = this.variableService.resolveVariables(
+    let variables = this.variableService.resolveVariables(
       params.profileId || params.profile,
       params.environment,
       params.collection,
@@ -53,12 +64,69 @@ export class HttpService {
       params.variables
     );
 
+    // 1.5. Pre-Request Script execution
+    if (params.preRequestScript && params.preRequestScript.trim()) {
+      const activeEnvObj = params.environment ? this.stateManager.getEnvironment(params.environment) : undefined;
+      const colObj = params.collection ? this.stateManager.getCollection(params.collection) : undefined;
+
+      const preResult = this.scriptService.executePreRequest(params.preRequestScript, {
+        url: rawUrl,
+        method,
+        headers: incomingHeaders,
+        body: incomingBody,
+        environmentVariables: activeEnvObj?.variables || {},
+        collectionVariables: colObj?.variables || {},
+        resolvedVariables: { ...variables },
+      });
+
+      rawUrl = preResult.url;
+      method = preResult.method;
+      incomingHeaders = preResult.headers;
+      incomingBody = preResult.body;
+      allConsoleLogs.push(...preResult.consoleLogs);
+
+      // Apply environment variable mutations if any
+      if (params.environment && activeEnvObj && Object.keys(preResult.envMutations).length > 0) {
+        activeEnvObj.variables = activeEnvObj.variables || {};
+        for (const [k, v] of Object.entries(preResult.envMutations)) {
+          if (v === null) {
+            delete activeEnvObj.variables[k];
+          } else {
+            activeEnvObj.variables[k] = v;
+          }
+        }
+        this.stateManager.saveEnvironment(params.environment, activeEnvObj);
+
+        // Re-resolve variables since environment changed
+        variables = this.variableService.resolveVariables(
+          params.profileId || params.profile,
+          params.environment,
+          params.collection,
+          params.folder,
+          params.variables
+        );
+      }
+
+      // Apply collection variable mutations if any
+      if (colObj && Object.keys(preResult.colMutations).length > 0) {
+        colObj.variables = colObj.variables || {};
+        for (const [k, v] of Object.entries(preResult.colMutations)) {
+          if (v === null) {
+            delete colObj.variables[k];
+          } else {
+            colObj.variables[k] = v;
+          }
+        }
+        this.stateManager.saveCollection(colObj);
+      }
+    }
+
     // 2. Resolve hierarchical headers (Parent Env -> Env -> Col -> Folder -> Request)
     const hierarchicalHeaders = this.variableService.resolveHeaders(
       params.environment,
       params.collection,
       params.folder,
-      params.headers || {}
+      incomingHeaders
     );
 
     // 3. Resolve Auth headers
@@ -76,15 +144,27 @@ export class HttpService {
       {
         url: rawUrl,
         headers: authHeaders,
-        body: params.body,
+        body: incomingBody,
       },
       variables
     );
 
-    const finalUrl = interpolated.url.trim();
+    let finalUrl = interpolated.url.trim();
 
     if (!finalUrl) {
       throw new Error('URL is required to send a request.');
+    }
+
+    // Auto-resolve relative URL paths if baseUrl is available
+    if (finalUrl.startsWith('/') && variables['baseUrl']) {
+      finalUrl = `${variables['baseUrl'].replace(/\/+$/, '')}${finalUrl}`;
+    }
+
+    // Auto-prepend http:// if host looks like localhost, 127.0.0.1, or an IPv4 address
+    if (!finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
+      if (finalUrl.startsWith('localhost') || /^(?:127\.0\.0\.1|\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?::\d+)?(?:\/.*)?$/.test(finalUrl)) {
+        finalUrl = `http://${finalUrl}`;
+      }
     }
 
     if (!finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
@@ -191,6 +271,56 @@ export class HttpService {
         responseHeaders[key] = val;
       });
 
+      // 5. Post-Response Script execution
+      if (params.postResponseScript && params.postResponseScript.trim()) {
+        const activeEnvObj = params.environment ? this.stateManager.getEnvironment(params.environment) : undefined;
+        const colObj = params.collection ? this.stateManager.getCollection(params.collection) : undefined;
+
+        const postResult = this.scriptService.executePostResponse(params.postResponseScript, {
+          url: finalUrl,
+          method,
+          requestHeaders: interpolated.headers,
+          requestBody: interpolated.body,
+          status: response.status,
+          statusText: response.statusText,
+          headers: responseHeaders,
+          body: responseText,
+          elapsedMs,
+          environmentVariables: activeEnvObj?.variables || {},
+          collectionVariables: colObj?.variables || {},
+          resolvedVariables: { ...variables },
+        });
+
+        testResults = postResult.testResults;
+        allConsoleLogs.push(...postResult.consoleLogs);
+
+        // Apply environment variable mutations if any
+        if (params.environment && activeEnvObj && Object.keys(postResult.envMutations).length > 0) {
+          activeEnvObj.variables = activeEnvObj.variables || {};
+          for (const [k, v] of Object.entries(postResult.envMutations)) {
+            if (v === null) {
+              delete activeEnvObj.variables[k];
+            } else {
+              activeEnvObj.variables[k] = v;
+            }
+          }
+          this.stateManager.saveEnvironment(params.environment, activeEnvObj);
+        }
+
+        // Apply collection variable mutations if any
+        if (colObj && Object.keys(postResult.colMutations).length > 0) {
+          colObj.variables = colObj.variables || {};
+          for (const [k, v] of Object.entries(postResult.colMutations)) {
+            if (v === null) {
+              delete colObj.variables[k];
+            } else {
+              colObj.variables[k] = v;
+            }
+          }
+          this.stateManager.saveCollection(colObj);
+        }
+      }
+
       const metadata: ResponseMetadata = {
         ok: response.ok,
         status: response.status,
@@ -199,6 +329,8 @@ export class HttpService {
         sizeBytes,
         headers: responseHeaders,
         body: responseText,
+        testResults,
+        consoleLogs: allConsoleLogs,
       };
 
       // Record in history without touching collections
@@ -217,6 +349,8 @@ export class HttpService {
         environment: params.environment,
         auth: params.auth,
         variables: params.variables,
+        preRequestScript: params.preRequestScript,
+        postResponseScript: params.postResponseScript,
       };
 
       const recorded = this.stateManager.recordHistory(historyItem, {
@@ -228,6 +362,8 @@ export class HttpService {
         headers: responseHeaders,
         body: responseText,
         resolvedUrl: finalUrl,
+        testResults,
+        consoleLogs: allConsoleLogs,
       });
 
       // Live notification to open History Inspector
@@ -236,16 +372,68 @@ export class HttpService {
       return metadata;
     } catch (err) {
       const elapsedMs = Math.round(performance.now() - startTime);
-      const errorMsg = err instanceof Error ? err.message : String(err);
+
+      // Extract the real OS-level error from Node's fetch wrapper.
+      // fetch() wraps network errors as TypeError("fetch failed", { cause: <SystemError> })
+      // The actual details (code, port, address) live in err.cause.
+      const cause = (err instanceof Error && (err as any).cause) ? (err as any).cause : null;
+      const causeCode: string = cause?.code || '';       // e.g. "ECONNREFUSED"
+      const causeMsg: string  = cause?.message || '';
+      const surfaceMsg = err instanceof Error ? err.message : String(err);
+
+      // Build a structured diagnostic string
+      let errorLabel = 'Network Error';
+      let diagnostic = surfaceMsg;
+
+      if (causeCode === 'ECONNREFUSED') {
+        const addr = cause?.address ? `${cause.address}:${cause.port}` : finalUrl;
+        errorLabel = 'Connection Refused';
+        diagnostic =
+          `Connection refused by ${addr}\n\n` +
+          `The server actively rejected the connection. Common causes:\n` +
+          `  • The server is not running on that host/port\n` +
+          `  • A firewall is blocking the port\n` +
+          `  • Wrong port number in baseUrl or URL\n\n` +
+          `Error: ECONNREFUSED ${causeMsg || addr}`;
+      } else if (causeCode === 'ETIMEDOUT' || causeCode === 'ENETUNREACH') {
+        errorLabel = causeCode === 'ETIMEDOUT' ? 'Connection Timed Out' : 'Network Unreachable';
+        diagnostic =
+          `${errorLabel}: ${causeMsg || finalUrl}\n\n` +
+          `Common causes:\n` +
+          `  • Host is unreachable (wrong IP or network)\n` +
+          `  • Firewall silently dropping packets\n` +
+          `  • VPN or routing issue\n\n` +
+          `Error: ${causeCode}`;
+      } else if (causeCode === 'ENOTFOUND') {
+        errorLabel = 'DNS Resolution Failed';
+        diagnostic =
+          `Cannot resolve hostname: ${causeMsg || finalUrl}\n\n` +
+          `Common causes:\n` +
+          `  • Hostname doesn't exist or is misspelled\n` +
+          `  • DNS not available\n` +
+          `  • baseUrl contains a hostname instead of an IP\n\n` +
+          `Error: ENOTFOUND`;
+      } else if (err instanceof Error && err.name === 'AbortError') {
+        errorLabel = 'Request Timed Out';
+        diagnostic =
+          `Request aborted after 30 seconds.\n\n` +
+          `The server did not respond within the timeout window.\n` +
+          `Check that the host is reachable and the endpoint is responding.`;
+      } else if (causeCode) {
+        errorLabel = causeCode;
+        diagnostic = `${surfaceMsg}\n\nUnderlying error: ${causeCode} — ${causeMsg}`;
+      }
 
       const metadata: ResponseMetadata = {
         ok: false,
         status: 0,
-        statusText: 'Network Error',
+        statusText: errorLabel,
         elapsedMs,
         sizeBytes: 0,
         headers: {},
-        body: errorMsg,
+        body: diagnostic,
+        testResults,
+        consoleLogs: allConsoleLogs,
       };
 
       // Record network error attempts in history
@@ -264,17 +452,21 @@ export class HttpService {
         environment: params.environment,
         auth: params.auth,
         variables: params.variables,
+        preRequestScript: params.preRequestScript,
+        postResponseScript: params.postResponseScript,
       };
 
       const recorded = this.stateManager.recordHistory(historyItem, {
         ok: false,
         status: 0,
-        statusText: 'Network Error',
+        statusText: errorLabel,
         elapsedMs,
         sizeBytes: 0,
         headers: {},
-        body: errorMsg,
+        body: diagnostic,
         resolvedUrl: finalUrl,
+        testResults,
+        consoleLogs: allConsoleLogs,
       });
 
       BlueByrdHistoryPanel.notifyNewHistory(recorded);

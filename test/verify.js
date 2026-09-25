@@ -12,7 +12,8 @@ const mockVscode = {
     }
   },
   TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
-  ThemeIcon: class { constructor(id) { this.id = id; } },
+  ThemeIcon: class { constructor(id, color) { this.id = id; this.color = color; } },
+  ThemeColor: class { constructor(id) { this.id = id; } },
   EventEmitter: class {
     constructor() {
       this.event = () => {};
@@ -20,12 +21,32 @@ const mockVscode = {
     fire() {}
     dispose() {}
   },
+  DataTransfer: class {
+    constructor() {
+      this.entries = new Map();
+    }
+    get(mime) {
+      return this.entries.get(mime);
+    }
+    set(mime, item) {
+      this.entries.set(mime, item);
+    }
+  },
+  DataTransferItem: class {
+    constructor(value) {
+      this.value = value;
+    }
+    asString() {
+      return Promise.resolve(typeof this.value === 'string' ? this.value : JSON.stringify(this.value));
+    }
+  },
   window: {
     showInformationMessage: () => {},
     showErrorMessage: () => {},
     showWarningMessage: () => {},
     createTreeView: () => ({ dispose: () => {} }),
     createStatusBarItem: () => ({ show: () => {} }),
+    setStatusBarMessage: () => ({ dispose: () => {} }),
     StatusBarAlignment: { Right: 2 },
   },
   commands: {
@@ -46,9 +67,18 @@ const repoDist = path.resolve(__dirname, '../dist');
 const { BlueByrdStateManager } = require(path.join(repoDist, 'state/stateManager'));
 const { VariableService } = require(path.join(repoDist, 'services/variableService'));
 const { AuthService } = require(path.join(repoDist, 'services/authService'));
+const { TokenService } = require(path.join(repoDist, 'services/tokenService'));
+const { ScriptService } = require(path.join(repoDist, 'services/scriptService'));
 const { ImportExportService } = require(path.join(repoDist, 'services/importExportService'));
 const { UpdateService } = require(path.join(repoDist, 'services/updateService'));
 const { BlueByrdExplorerTreeDataProvider } = require(path.join(repoDist, 'views/tree/explorerTreeDataProvider'));
+const {
+  BlueByrdProfilesTreeProvider,
+  BlueByrdCollectionsTreeProvider,
+  BlueByrdEnvironmentsTreeProvider,
+  BlueByrdHistoryTreeProvider,
+  BlueByrdTreeCoordinator,
+} = require(path.join(repoDist, 'views/tree'));
 
 console.log('--- Starting bluebyrd Verification Suite ---');
 
@@ -179,16 +209,22 @@ const checkFolderAfterHistory = checkColAfterHistory.folders.find(f => f.name ==
 assert.strictEqual(checkFolderAfterHistory.requests.length, initialFolderReqCount, 'Folders must NOT be modified by request execution');
 console.log('✓ History recording isolation passed');
 
-// Test 7: Duplication & Deletion
+// Test 7: Duplication, Cloning & Deletion
 const duplicated = stateManager.duplicateRequest('test-req-1');
 assert(duplicated, 'Duplicate request should succeed');
 assert(duplicated.id !== 'test-req-1', 'Duplicated request should have a distinct ID');
 assert(duplicated.name.includes('(Copy)'), 'Duplicated request should have (Copy) in name');
 
+const clonedReq = stateManager.cloneRequest('test-req-1', 'Custom Cloned Request');
+assert(clonedReq, 'Clone request with custom name should succeed');
+assert.strictEqual(clonedReq.name, 'Custom Cloned Request');
+assert(clonedReq.id !== 'test-req-1' && clonedReq.id !== duplicated.id);
+
 const deleted = stateManager.deleteRequest(duplicated.id);
 assert.strictEqual(deleted, true, 'Delete request should succeed');
 assert(!stateManager.getRequest(duplicated.id), 'Deleted request should no longer exist');
-console.log('✓ Request duplication and deletion passed');
+stateManager.deleteRequest(clonedReq.id);
+console.log('✓ Request duplication, cloning and deletion passed');
 
 // Test 8: History Clear
 stateManager.clearHistory();
@@ -455,6 +491,64 @@ assert(reqScriptMatch, 'Script block must be present in request panel HTML');
 assert.doesNotThrow(() => {
   new Function(reqScriptMatch[1]);
 }, 'Client script in request panel HTML must be valid JavaScript without syntax or template errors');
+
+function createMockDom() {
+  const elements = new Map();
+  function getEl(id) {
+    if (!elements.has(id)) {
+      elements.set(id, {
+        id,
+        tagName: 'DIV',
+        value: '',
+        textContent: '',
+        innerHTML: '',
+        style: {},
+        classList: {
+          contains: () => false,
+          add: () => {},
+          remove: () => {},
+          toggle: () => {},
+        },
+        selectedOptions: [{ value: 'Default', dataset: { id: 'def-1' } }],
+        options: [{ value: 'Default', getAttribute: () => 'def-1' }],
+        selectedIndex: 0,
+        querySelector: (sel) => getEl(sel),
+        querySelectorAll: () => [],
+        appendChild: () => {},
+        remove: () => {},
+        addEventListener: () => {},
+      });
+    }
+    return elements.get(id);
+  }
+  return {
+    getElementById: (id) => getEl(id),
+    querySelector: (sel) => getEl(sel),
+    querySelectorAll: () => [],
+    createElement: (tag) => ({
+      tagName: tag,
+      innerHTML: '',
+      textContent: '',
+      style: {},
+      classList: { add: () => {}, remove: () => {}, toggle: () => {} },
+      querySelector: (sel) => getEl(sel),
+      querySelectorAll: () => [],
+      appendChild: () => {},
+      remove: () => {},
+      addEventListener: () => {},
+      setAttribute: () => {},
+    }),
+    addEventListener: () => {},
+  };
+}
+
+// Runtime execution test: ensures no Temporal Dead Zone (TDZ) ReferenceErrors (e.g. inheritedVarsContainer)
+assert.doesNotThrow(() => {
+  const mockDoc = createMockDom();
+  const mockWindow = { addEventListener: () => {} };
+  const fn = new Function('document', 'window', 'acquireVsCodeApi', reqScriptMatch[1]);
+  fn(mockDoc, mockWindow, () => ({ postMessage: () => {} }));
+}, 'Client script in request panel HTML must execute without runtime TDZ ReferenceError');
 
 const renderedFormScriptMatch = renderedFormHtml.match(/<script>([\s\S]*?)<\/script>/);
 assert(renderedFormScriptMatch, 'Script block must be present in rendered form request HTML');
@@ -1324,7 +1418,638 @@ console.log('✓ Request panel script integrity & syntax validation passed');
 
   console.log('✓ Profile-Scoped Workspace & Visual Parent -> Child Environment Tree Nesting verified');
 
-  console.log('\nAll 33 verification test suites passed successfully! 🎉');
+  // Test 34: Breakout Native View Panes Architecture & Profile OAuth Token Vault
+  const tokenService = new TokenService();
+  const breakoutProfiles = new BlueByrdProfilesTreeProvider(hierarchySM, tokenService);
+  const breakoutCollections = new BlueByrdCollectionsTreeProvider(hierarchySM);
+  const breakoutEnvironments = new BlueByrdEnvironmentsTreeProvider(hierarchySM);
+  const breakoutHistory = new BlueByrdHistoryTreeProvider(hierarchySM);
+
+  let coordinatorRefreshed = false;
+  const coordinator = new BlueByrdTreeCoordinator(
+    breakoutProfiles,
+    breakoutCollections,
+    breakoutEnvironments,
+    breakoutHistory,
+    () => { coordinatorRefreshed = true; }
+  );
+
+  // 1. Verify Profiles view
+  const profNodes = await breakoutProfiles.getChildren();
+  const profNodeLabels = profNodes.map(p => p.label);
+  assert(profNodeLabels.includes('Tenant Alpha'), 'Profiles view must list Tenant Alpha');
+  assert(profNodeLabels.includes('Tenant Beta'), 'Profiles view must list Tenant Beta');
+  assert(profNodeLabels.includes('Shared / Global'), 'Profiles view must list Shared / Global');
+  const alphaProfNode = profNodes.find(p => p.label === 'Tenant Alpha');
+  assert(alphaProfNode.description.includes('✔ Active'), 'Tenant Alpha must be marked active');
+
+  // Verify Profile Token Vault (initial: no tokens)
+  const initialAlphaTokens = await breakoutProfiles.getChildren(alphaProfNode);
+  assert.strictEqual(initialAlphaTokens.length, 1);
+  assert.strictEqual(initialAlphaTokens[0].label, 'No stored tokens');
+  assert.strictEqual(initialAlphaTokens[0].kind, 'noTokens');
+
+  // Save an OAuth token under Tenant Alpha
+  await tokenService.saveToken({
+    id: 'tok-alpha-dev',
+    profileId: profAlpha.id,
+    envId: alphaDev.env.id,
+    envName: 'Alpha Dev',
+    tokenName: 'Alpha Dev Bearer',
+    accessToken: 'bb_oauth_alpha_dev_1234567890abcdef',
+    refreshToken: 'bb_refresh_alpha_dev_abcdef1234567890',
+    expiresAt: Date.now() + 3600 * 1000,
+    scopes: ['read:orders', 'write:orders'],
+    tier: 'Bearer',
+  });
+
+  // Verify Profile Token Vault displays the active token
+  const updatedAlphaTokens = await breakoutProfiles.getChildren(alphaProfNode);
+  assert.strictEqual(updatedAlphaTokens.length, 1);
+  assert.strictEqual(updatedAlphaTokens[0].label, 'Alpha Dev');
+  assert.strictEqual(updatedAlphaTokens[0].kind, 'token');
+  assert(updatedAlphaTokens[0].description.includes('Bearer'));
+  assert(updatedAlphaTokens[0].description.includes('Expires'));
+  assert(updatedAlphaTokens[0].description.includes('refreshable'));
+
+  // Verify AuthService auto-resolution with TokenService
+  const authServiceWithTokens = new AuthService(hierarchySM, tokenService);
+  const testOAuthReqAuth = {
+    inheritFromProfile: true,
+    inheritFromEnvironment: true,
+    auth: {
+      type: 'oauth2'
+    }
+  };
+  const resolvedOAuthHeaders = authServiceWithTokens.resolveAuthHeaders(
+    profAlpha.id,
+    alphaDev.env.id,
+    undefined,
+    undefined,
+    {},
+    testOAuthReqAuth
+  );
+  assert(resolvedOAuthHeaders['Authorization'], 'Authorization header must be auto-injected from Token Vault');
+  assert.strictEqual(resolvedOAuthHeaders['Authorization'], 'Bearer bb_oauth_alpha_dev_1234567890abcdef');
+
+  // Verify token deletion
+  await tokenService.deleteToken(profAlpha.id, 'tok-alpha-dev');
+  const afterDeleteTokens = await breakoutProfiles.getChildren(alphaProfNode);
+  assert.strictEqual(afterDeleteTokens.length, 1);
+  assert.strictEqual(afterDeleteTokens[0].label, 'No stored tokens');
+
+  // 2. Verify Collections view is scoped to active profile (Tenant Alpha) + Shared
+  const alphaColNodes = breakoutCollections.getChildren();
+  const breakoutAlphaColLabels = alphaColNodes.map(c => c.label);
+  assert(breakoutAlphaColLabels.includes('Alpha Orders API'), 'Collections view must show Alpha Orders API for Tenant Alpha');
+  assert(breakoutAlphaColLabels.includes('Global Shared Library'), 'Collections view must include Shared / Global collections');
+  assert(!breakoutAlphaColLabels.includes('Beta Inventory API'), 'Collections view must NOT show Beta Inventory API under Tenant Alpha scope');
+
+  // 3. Verify Environments view has Parent -> Child nesting for Tenant Alpha
+  const alphaEnvNodes = breakoutEnvironments.getChildren();
+  const breakoutAlphaEnvLabels = alphaEnvNodes.map(e => e.label);
+  assert(breakoutAlphaEnvLabels.includes('Alpha Base'), 'Environments view must have root Alpha Base');
+  assert(breakoutAlphaEnvLabels.includes('Global Root'), 'Environments view must include Shared / Global environment');
+  assert(!breakoutAlphaEnvLabels.includes('Beta Prod'), 'Environments view must NOT include Beta Prod under Tenant Alpha scope');
+
+  const breakoutAlphaBase = alphaEnvNodes.find(e => e.label === 'Alpha Base');
+  assert(breakoutAlphaBase, 'Alpha Base node must exist');
+  const breakoutAlphaBaseChildren = breakoutEnvironments.getChildren(breakoutAlphaBase);
+  assert.strictEqual(breakoutAlphaBaseChildren.length, 1);
+  const breakoutAlphaDev = breakoutAlphaBaseChildren[0];
+  assert.strictEqual(breakoutAlphaDev.label, 'Alpha Dev');
+  assert(breakoutAlphaDev.description.includes('✔ Active'), 'Active environment Alpha Dev must show ✔ Active');
+
+  const breakoutAlphaDevChildren = breakoutEnvironments.getChildren(breakoutAlphaDev);
+  assert.strictEqual(breakoutAlphaDevChildren.length, 1);
+  assert.strictEqual(breakoutAlphaDevChildren[0].label, 'Alpha Feature 1');
+
+  // 4. Verify dynamic re-scoping when switching to Tenant Beta
+  hierarchySM.setActiveProfileId(profBeta.id);
+  coordinator.refresh();
+  assert(coordinatorRefreshed, 'Coordinator callback must fire on refresh');
+
+  const betaColNodes = breakoutCollections.getChildren();
+  const breakoutBetaColLabels = betaColNodes.map(c => c.label);
+  assert(breakoutBetaColLabels.includes('Beta Inventory API'), 'Collections view must re-scope to Beta Inventory API');
+  assert(!breakoutBetaColLabels.includes('Alpha Orders API'), 'Collections view must no longer show Alpha Orders API');
+
+  const betaEnvNodes = breakoutEnvironments.getChildren();
+  const breakoutBetaEnvLabels = betaEnvNodes.map(e => e.label);
+  assert(breakoutBetaEnvLabels.includes('Beta Prod'), 'Environments view must re-scope to Beta Prod');
+  assert(!breakoutBetaEnvLabels.includes('Alpha Base'), 'Environments view must no longer show Alpha Base');
+
+  // 5. Verify History view
+  const historyNodes = breakoutHistory.getChildren();
+  assert(Array.isArray(historyNodes), 'History provider must return array of nodes');
+
+  console.log('✓ Breakout Native View Panes Architecture & Profile OAuth Token Vault verified');
+
+  // Test 35: Reorder Drag & Drop of Collections, Folders, and Requests
+  // 1. Programmatic State Reordering & Moving
+  const dndSM = new BlueByrdStateManager(mockContext);
+  const colA = dndSM.createCollection('DnD Collection Alpha');
+  const colB = dndSM.createCollection('DnD Collection Beta');
+
+  // Verify reorderCollection
+  const initialCols = dndSM.getCollections();
+  const alphaIdx = initialCols.findIndex(c => c.id === colA.id);
+  const betaIdx = initialCols.findIndex(c => c.id === colB.id);
+  assert(alphaIdx < betaIdx, 'Alpha collection should originally be before Beta');
+
+  dndSM.reorderCollection(colB.id, colA.id, 'before');
+  const reorderedCols = dndSM.getCollections();
+  assert.strictEqual(reorderedCols.findIndex(c => c.id === colB.id), alphaIdx, 'Beta should now be before Alpha');
+
+  // Verify moveCollectionToEnd
+  dndSM.moveCollectionToEnd(colB.id);
+  const endCols = dndSM.getCollections();
+  assert.strictEqual(endCols[endCols.length - 1].id, colB.id, 'Beta should be moved to the end');
+
+  // Setup Folders in Col Alpha
+  const folder1 = dndSM.createFolder(colA.id, 'Folder 1');
+  const folder2 = dndSM.createFolder(colA.id, 'Folder 2');
+  const folder3 = dndSM.createFolder(colA.id, 'Folder 3');
+
+  // Verify reorderFolder within same collection
+  dndSM.reorderFolder(colA.id, folder3.id, folder1.id, 'before');
+  const updatedColA = dndSM.getCollection(colA.id);
+  assert.strictEqual(updatedColA.folders[0].id, folder3.id, 'Folder 3 should now be the first folder');
+  assert.strictEqual(updatedColA.folders[1].id, folder1.id, 'Folder 1 should now be second');
+
+  // Verify moveFolderToCollection
+  dndSM.moveFolderToCollection(folder2.id, colB.id);
+  const afterMoveColA = dndSM.getCollection(colA.id);
+  const afterMoveColB = dndSM.getCollection(colB.id);
+  assert(!afterMoveColA.folders.some(f => f.id === folder2.id), 'Folder 2 must no longer be in Col Alpha');
+  assert(afterMoveColB.folders.some(f => f.id === folder2.id), 'Folder 2 must now be in Col Beta');
+
+  // Setup Requests
+  const req1 = dndSM.saveRequest({
+    id: 'req-dnd-1',
+    name: 'Request 1',
+    method: 'GET',
+    url: 'https://api.test/1',
+    collection: colA.name,
+    headers: {},
+    body: '',
+  }, colA.id);
+
+  const req2 = dndSM.saveRequest({
+    id: 'req-dnd-2',
+    name: 'Request 2',
+    method: 'POST',
+    url: 'https://api.test/2',
+    collection: colA.name,
+    headers: {},
+    body: '',
+  }, colA.id);
+
+  // Verify request reordering at collection root
+  dndSM.moveRequest(req2.id, colA.id, undefined, req1.id, 'before');
+  const rootReqsColA = dndSM.getCollection(colA.id).requests;
+  assert.strictEqual(rootReqsColA[0].id, req2.id, 'Request 2 should now be before Request 1');
+
+  // Verify moving request into folder
+  dndSM.moveRequest(req1.id, colA.id, folder3.id);
+  const colAAfterReqMove = dndSM.getCollection(colA.id);
+  assert(!colAAfterReqMove.requests.some(r => r.id === req1.id), 'Request 1 should no longer be at root');
+  const f3 = colAAfterReqMove.folders.find(f => f.id === folder3.id);
+  assert(f3.requests.some(r => r.id === req1.id), 'Request 1 should now be inside Folder 3');
+
+  // Verify moving request across collections into folder
+  dndSM.moveRequest(req1.id, colB.id, folder2.id);
+  const colBAfterMove = dndSM.getCollection(colB.id);
+  const f2 = colBAfterMove.folders.find(f => f.id === folder2.id);
+  assert(f2.requests.some(r => r.id === req1.id), 'Request 1 should now be inside Col Beta / Folder 2');
+
+  // Verify moveItemUp and moveItemDown
+  const preDownCols = dndSM.getCollections();
+  const firstCol = preDownCols[0];
+  dndSM.moveItemDown('collection', firstCol.id);
+  const postDownCols = dndSM.getCollections();
+  assert.strictEqual(postDownCols[1].id, firstCol.id, 'Col should move down 1 slot');
+  dndSM.moveItemUp('collection', firstCol.id);
+  const postUpCols = dndSM.getCollections();
+  assert.strictEqual(postUpCols[0].id, firstCol.id, 'Col should move back up to 0 index');
+
+  // 2. Drag and Drop Controller (TreeDragAndDropController implementation)
+  const dndProvider = new BlueByrdCollectionsTreeProvider(dndSM);
+  assert(dndProvider.dragMimeTypes.includes('application/vnd.code.tree.bluebyrdcollections'), 'Must support bluebyrdcollections drag mime type');
+  assert(dndProvider.dropMimeTypes.includes('application/vnd.code.tree.bluebyrdcollections'), 'Must support bluebyrdcollections drop mime type');
+
+  // Test handleDrag
+  const colTreeItems = dndProvider.getChildren();
+  const sourceColItem = colTreeItems[1];
+  const targetColItem = colTreeItems[0];
+
+  const dataTransfer = new mockVscode.DataTransfer();
+  dndProvider.handleDrag([sourceColItem], dataTransfer, {});
+  const transferItem = dataTransfer.get('application/vnd.code.tree.bluebyrdcollections');
+  assert(transferItem, 'DataTransfer must store dragged item under MIME');
+
+  // Test handleDrop: Reorder Collection
+  const originalCols = dndSM.getCollections().map(c => c.id);
+  await dndProvider.handleDrop(targetColItem, dataTransfer, {});
+  const afterDropCols = dndSM.getCollections().map(c => c.id);
+  assert.strictEqual(afterDropCols[0], sourceColItem.itemId, 'Second collection should move to first index after dropping before first');
+
+  // Test handleDrop: Move Request into Folder via Drag and Drop
+  const reqTransfer = new mockVscode.DataTransfer();
+  const reqSourceItem = { kind: 'request', itemId: req2.id, parentId: colA.id };
+  const folderTargetItem = { kind: 'folder', itemId: folder3.id, parentId: colA.id };
+  reqTransfer.set('application/vnd.code.tree.bluebyrdcollections', new mockVscode.DataTransferItem([reqSourceItem]));
+
+  await dndProvider.handleDrop(folderTargetItem, reqTransfer, {});
+  const f3Check = dndSM.getCollection(colA.id).folders.find(f => f.id === folder3.id);
+  assert(f3Check.requests.some(r => r.id === req2.id), 'Request 2 must be moved into Folder 3 via Drag & Drop');
+
+  // Test handleDrop: Move Request to Collection Root via Drag and Drop
+  const reqToRootTransfer = new mockVscode.DataTransfer();
+  const reqFromFolderItem = { kind: 'request', itemId: req2.id, parentId: folder3.id };
+  const colTargetItem = { kind: 'collection', itemId: colA.id };
+  reqToRootTransfer.set('application/vnd.code.tree.bluebyrdcollections', new mockVscode.DataTransferItem([reqFromFolderItem]));
+
+  await dndProvider.handleDrop(colTargetItem, reqToRootTransfer, {});
+  const colACheck = dndSM.getCollection(colA.id);
+  assert(colACheck.requests.some(r => r.id === req2.id), 'Request 2 must be moved back to collection root via Drag & Drop');
+
+  console.log('✓ Reorder Drag & Drop of Collections, Folders, and Requests verified');
+
+  // Test 36: Environment Cloning, Hierarchy Preservation & State Isolation
+  const cloneSM = new BlueByrdStateManager(mockContext);
+  const parentEnvResult = cloneSM.createEnvironment('Prod Base', 'https://api.prod.com');
+  const childEnvResult = cloneSM.createEnvironment('Prod US-East', 'https://useast.api.prod.com');
+  childEnvResult.env.inheritsFrom = parentEnvResult.env.id;
+  childEnvResult.env.variables = { region: 'us-east-1', timeout: '5000' };
+  childEnvResult.env.headers = { 'X-Region': 'us-east-1' };
+  childEnvResult.env.auth = { type: 'bearer', token: 'secret-token-123' };
+  cloneSM.saveEnvironment('Prod US-East', childEnvResult.env);
+
+  // 1. Clone with default copy name
+  const defaultClone = cloneSM.cloneEnvironment('Prod US-East');
+  assert(defaultClone, 'cloneEnvironment must succeed');
+  assert.strictEqual(defaultClone.name, 'Prod US-East (Copy)', 'Default cloned environment name must have (Copy)');
+  assert.notStrictEqual(defaultClone.env.id, childEnvResult.env.id, 'Cloned environment must have distinct ID');
+  assert.strictEqual(defaultClone.env.baseUrl, 'https://useast.api.prod.com', 'BaseUrl must be cloned');
+  assert.strictEqual(defaultClone.env.inheritsFrom, parentEnvResult.env.id, 'inheritsFrom must be preserved');
+  assert.strictEqual(defaultClone.env.variables.region, 'us-east-1', 'Variables must be cloned');
+  assert.strictEqual(defaultClone.env.headers['X-Region'], 'us-east-1', 'Headers must be cloned');
+  assert.strictEqual(defaultClone.env.auth.token, 'secret-token-123', 'Auth must be cloned');
+
+  // Verify memory isolation between clone and original
+  defaultClone.env.variables.region = 'us-west-2';
+  cloneSM.saveEnvironment(defaultClone.name, defaultClone.env);
+  const checkOriginal = cloneSM.getEnvironment('Prod US-East');
+  assert.strictEqual(checkOriginal.variables.region, 'us-east-1', 'Mutating clone variables must not mutate original environment');
+
+  // 2. Clone with custom name
+  const customClone = cloneSM.cloneEnvironment(childEnvResult.env.id, 'Prod EU-Central');
+  assert(customClone, 'Cloning by ID with custom name must succeed');
+  assert.strictEqual(customClone.name, 'Prod EU-Central');
+  assert.strictEqual(customClone.env.inheritsFrom, parentEnvResult.env.id);
+
+  console.log('✓ Environment Cloning, Hierarchy Preservation & State Isolation verified');
+
+  // Test 37: Variable Resolution & URL Scheme Auto-Resolution with Base URL & IP Targets
+  const varSM = new BlueByrdStateManager(mockContext);
+  const varService = new VariableService(varSM);
+  const varAuthService = new AuthService(varSM, varService);
+  const varHttpService = new HttpService(varSM, varService, varAuthService);
+
+  // Setup Algorand-like environment with base URL and profile scope
+  const algoEnvResult = varSM.createEnvironment('Algorand Mainnet IdeaPad', 'http://192.168.1.199:8080');
+  algoEnvResult.env.variables = { tokenHeader: 'X-Algo-Token', genesisId: 'mainnet-v1.0' };
+  varSM.saveEnvironment('Algorand Mainnet IdeaPad', algoEnvResult.env);
+
+  // Setup Algod Collection with default baseUrl = http://localhost (like imported OpenAPI / Postman spec)
+  const algoCol = varSM.getState().collections[0];
+  algoCol.variables = { baseUrl: 'http://localhost' };
+  varSM.saveCollection(algoCol);
+
+  // 1. Resolve variables with environment and collection: Environment MUST override Collection's baseUrl
+  const resolvedVars = varService.resolveVariables(undefined, 'Algorand Mainnet IdeaPad', algoCol.id);
+  assert.strictEqual(resolvedVars['baseUrl'], 'http://192.168.1.199:8080', 'Active Environment baseUrl must override Collection default baseUrl');
+  assert.strictEqual(resolvedVars['tokenHeader'], 'X-Algo-Token', 'Environment custom variables must resolve');
+
+  // 2. VariableService detailed resolution: Collection baseUrl must be marked as overridden, Environment baseUrl active
+  const detailed = varService.resolveVariablesDetailed(undefined, 'Algorand Mainnet IdeaPad', algoCol.id);
+  const colBaseUrl = detailed.inherited.find(i => i.key === 'baseUrl' && i.source === 'collection');
+  const envBaseUrl = detailed.inherited.find(i => i.key === 'baseUrl' && i.source === 'environment');
+  assert(colBaseUrl, 'Collection baseUrl must appear in inherited list');
+  assert.strictEqual(colBaseUrl.value, 'http://localhost');
+  assert.strictEqual(colBaseUrl.isOverridden, true, 'Collection baseUrl must be marked as overridden by Environment');
+  assert(envBaseUrl, 'Environment baseUrl must appear in inherited list');
+  assert.strictEqual(envBaseUrl.value, 'http://192.168.1.199:8080');
+  assert.strictEqual(envBaseUrl.isOverridden, undefined, 'Environment baseUrl must NOT be marked as overridden');
+
+  // 3. Request Panel HTML default selection with active environment
+  const varAppState = varSM.getState();
+  varAppState.activeEnvironmentName = 'Algorand Mainnet IdeaPad';
+  const panelHtml = getRequestPanelHtml(
+    { url: '{{baseUrl}}/v2/status', environment: 'Algorand Mainnet IdeaPad' },
+    varAppState,
+    detailed.inherited,
+    []
+  );
+  assert(panelHtml.includes('value="Algorand Mainnet IdeaPad" selected'), 'Selected environment must be selected in HTML');
+  assert(panelHtml.includes('http://192.168.1.199:8080'), 'Inherited baseUrl value must be embedded in script');
+
+  // 4. Test URL interpolation and auto-resolution in local HTTP server
+  let lastReceivedUrl = '';
+  const testServer = http.createServer((req, res) => {
+    lastReceivedUrl = req.url;
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ status: 'ok', url: req.url }));
+  });
+  await new Promise(resolve => testServer.listen(0, '127.0.0.1', resolve));
+  const testPort = testServer.address().port;
+
+  // Update environment to point to test server port
+  algoEnvResult.env.baseUrl = `http://127.0.0.1:${testPort}`;
+  varSM.saveEnvironment('Algorand Mainnet IdeaPad', algoEnvResult.env);
+
+  // Request with {{baseUrl}}/v2/status
+  const res1 = await varHttpService.executeRequest({
+    method: 'GET',
+    url: '{{baseUrl}}/v2/status',
+    environment: 'Algorand Mainnet IdeaPad',
+    headers: { 'Connection': 'close' }
+  });
+  assert.strictEqual(res1.status, 200);
+  assert.strictEqual(lastReceivedUrl, '/v2/status');
+
+  // Request with relative path /v2/ledger (auto-resolves baseUrl)
+  const res2 = await varHttpService.executeRequest({
+    method: 'GET',
+    url: '/v2/ledger',
+    environment: 'Algorand Mainnet IdeaPad',
+    headers: { 'Connection': 'close' }
+  });
+  assert.strictEqual(res2.status, 200);
+  assert.strictEqual(lastReceivedUrl, '/v2/ledger');
+
+  // Request with raw IPv4 target (auto-prepends http://)
+  const res3 = await varHttpService.executeRequest({
+    method: 'GET',
+    url: `127.0.0.1:${testPort}/v2/health`,
+    headers: { 'Connection': 'close' }
+  });
+  assert.strictEqual(res3.status, 200);
+  assert.strictEqual(lastReceivedUrl, '/v2/health');
+
+  if (typeof testServer.closeAllConnections === 'function') {
+    testServer.closeAllConnections();
+  }
+  await new Promise((resolve) => testServer.close(resolve));
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
+  console.log('✓ Variable Resolution & URL Scheme Auto-Resolution with Base URL & IP Targets verified');
+
+  // ─── Test 38: Network Error Diagnostic Classification ──────────────────────────
+  {
+    // Isolated context — prevents history pollution from the shared fakeStorage
+    const storage38 = new Map();
+    const ctx38 = {
+      workspaceState: {
+        get: (k) => storage38.get(k),
+        update: (k, v) => { storage38.set(k, v); return Promise.resolve(); }
+      }
+    };
+    const stateManager38 = new BlueByrdStateManager(ctx38);
+    const variableService38 = new VariableService(stateManager38);
+    const authService38 = new AuthService(stateManager38, variableService38);
+    const httpService38 = new HttpService(stateManager38, variableService38, authService38);
+
+    // ECONNREFUSED — use a high port that nothing is listening on
+    const econnResult = await httpService38.executeRequest({
+      method: 'GET',
+      url: 'http://127.0.0.1:19876/ping',
+    });
+    assert.strictEqual(econnResult.status, 0, 'ECONNREFUSED should return status 0');
+    assert.strictEqual(econnResult.ok, false);
+    assert.strictEqual(econnResult.statusText, 'Connection Refused',
+      `Expected "Connection Refused", got "${econnResult.statusText}"`);
+    assert.ok(econnResult.body.includes('ECONNREFUSED'),
+      `Expected ECONNREFUSED in body, got: ${econnResult.body.substring(0, 200)}`);
+    assert.ok(econnResult.body.includes('The server actively rejected'),
+      'Body should contain actionable explanation');
+
+    // AbortError — mock it by wrapping a rejected fetch
+    {
+      const abortErr = new Error('The operation was aborted');
+      abortErr.name = 'AbortError';
+      const origFetch = globalThis.fetch;
+      globalThis.fetch = async () => { throw abortErr; };
+      try {
+        const abortResult = await httpService38.executeRequest({
+          method: 'GET',
+          url: 'http://127.0.0.1:9999/timeout',
+        });
+        assert.strictEqual(abortResult.status, 0);
+        assert.strictEqual(abortResult.statusText, 'Request Timed Out',
+          `Expected "Request Timed Out", got "${abortResult.statusText}"`);
+        assert.ok(abortResult.body.includes('30 seconds'),
+          'Timeout body should mention 30 seconds');
+      } finally {
+        globalThis.fetch = origFetch;
+      }
+    }
+
+    // Unknown error with cause.code — should show cause code as label
+    {
+      const unknownErr = new TypeError('fetch failed');
+      unknownErr.cause = { code: 'ENETDOWN', message: 'Network is down' };
+      const origFetch = globalThis.fetch;
+      globalThis.fetch = async () => { throw unknownErr; };
+      try {
+        const unknownResult = await httpService38.executeRequest({
+          method: 'GET',
+          url: 'http://127.0.0.1:9999/unknown',
+        });
+        assert.strictEqual(unknownResult.status, 0);
+        assert.strictEqual(unknownResult.statusText, 'ENETDOWN',
+          `Expected "ENETDOWN" as statusText, got "${unknownResult.statusText}"`);
+        assert.ok(unknownResult.body.includes('ENETDOWN'));
+      } finally {
+        globalThis.fetch = origFetch;
+      }
+    }
+
+    // Verify error is recorded in history
+    const hist38 = stateManager38.getHistory();
+    assert.ok(hist38.length >= 1, 'Error requests should be recorded in history');
+    assert.strictEqual(hist38[hist38.length - 1].responseStatus, 0,
+      'Network error history items must have responseStatus === 0');
+
+    console.log('✓ Network Error Diagnostic Classification (ECONNREFUSED / AbortError / unknown) verified');
+  }
+
+  // ─── Test 39: Pre-Request & Post-Response Scripting Engine & Assertions ──────────────────────────
+  {
+    const scriptService = new ScriptService(1500);
+
+    // 1. Pre-Request Script Execution: mutation of headers, body, url, and variables
+    const preScriptCode = `
+      bb.request.headers['X-Calculated-Signature'] = crypto.createHmac('sha256', 'secret-key').update('bluebyrd-payload').digest('hex');
+      bb.request.headers['X-Timestamp'] = '1700000000';
+      bb.request.body = JSON.stringify({ injected: true });
+      bb.environment.set('injectedToken', 'bb_tok_999');
+      bb.collectionVariables.set('colKey', 'colVal');
+      console.log('Pre-request ran successfully');
+    `;
+
+    const preResult = scriptService.executePreRequest(preScriptCode, {
+      url: 'http://localhost/api',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '',
+      environmentVariables: {},
+      collectionVariables: {},
+      resolvedVariables: {},
+    });
+
+    assert(preResult.headers['X-Calculated-Signature'], 'Pre-request script should inject X-Calculated-Signature header');
+    assert.strictEqual(preResult.headers['X-Timestamp'], '1700000000');
+    assert.strictEqual(preResult.body, '{"injected":true}');
+    assert.strictEqual(preResult.envMutations['injectedToken'], 'bb_tok_999');
+    assert.strictEqual(preResult.colMutations['colKey'], 'colVal');
+    assert(preResult.consoleLogs.some(l => l.message.includes('Pre-request ran successfully')));
+
+    // 2. Post-Response Script Execution: assertions, PM parity, JSON parsing, test results
+    const postScriptCode = `
+      // bb API assertions
+      bb.test('Status is 200', () => {
+        bb.expect(bb.response.status).toBe(200);
+      });
+
+      bb.test('Status is 404 (expected failure)', () => {
+        bb.expect(bb.response.status).toBe(404);
+      });
+
+      bb.test('Payload matches user Alice', () => {
+        const data = bb.response.json();
+        bb.expect(data.name).toEqual('Alice');
+        bb.expect(data.roles).to.include('admin');
+        bb.expect(data.id).toBe(42);
+      });
+
+      // Postman pm API syntax parity
+      pm.test('Postman pm syntax parity', function() {
+        pm.expect(pm.response.status).to.equal(200);
+        pm.response.to.have.status(200);
+        pm.response.to.have.header('content-type');
+      });
+
+      // Extract token to environment
+      const payload = bb.response.json();
+      bb.environment.set('extractedToken', payload.token);
+      console.info('Finished post-response tests');
+    `;
+
+    const postResult = scriptService.executePostResponse(postScriptCode, {
+      url: 'http://localhost/api',
+      method: 'GET',
+      requestHeaders: {},
+      status: 200,
+      statusText: 'OK',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id: 42, name: 'Alice', roles: ['admin', 'dev'], token: 'jwt_abc_123' }),
+      elapsedMs: 45,
+      environmentVariables: {},
+      collectionVariables: {},
+      resolvedVariables: {},
+    });
+
+    assert.strictEqual(postResult.testResults.length, 4, 'Should record exactly 4 tests');
+    const passedTests = postResult.testResults.filter(t => t.passed);
+    const failedTests = postResult.testResults.filter(t => !t.passed);
+    assert.strictEqual(passedTests.length, 3, '3 tests should pass');
+    assert.strictEqual(failedTests.length, 1, '1 test should fail');
+    assert.strictEqual(failedTests[0].name, 'Status is 404 (expected failure)');
+    assert(failedTests[0].error.includes('404'), 'Failed test error should describe failure');
+    assert.strictEqual(postResult.envMutations['extractedToken'], 'jwt_abc_123');
+    assert(postResult.consoleLogs.some(l => l.message.includes('Finished post-response tests')));
+
+    // 3. Sandbox execution timeout guard (infinite loop protection)
+    const timeoutScriptService = new ScriptService(150); // 150ms timeout
+    const timeoutResult = timeoutScriptService.executePreRequest('while(true) {}', {
+      url: 'http://localhost',
+      method: 'GET',
+      headers: {},
+      environmentVariables: {},
+      collectionVariables: {},
+      resolvedVariables: {},
+    });
+    assert(timeoutResult.error, 'Infinite loop script must be aborted with error');
+    assert(timeoutResult.consoleLogs.some(l => l.level === 'error'), 'Should log script timeout error');
+
+    // 4. End-to-End HttpService Integration with Test Server
+    const http = require('http');
+    let receivedHeader = '';
+    const scriptTestServer = http.createServer((req, res) => {
+      receivedHeader = req.headers['x-script-injected'] || '';
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ status: 'ok', serverName: 'bluebyrd-test-srv', token: 'secret_tok_777' }));
+    });
+
+    await new Promise((resolve) => scriptTestServer.listen(0, '127.0.0.1', resolve));
+    const scriptPort = scriptTestServer.address().port;
+
+    const storage39 = new Map();
+    const ctx39 = {
+      workspaceState: {
+        get: (k) => storage39.get(k),
+        update: (k, v) => { storage39.set(k, v); return Promise.resolve(); }
+      }
+    };
+    const stateManager39 = new BlueByrdStateManager(ctx39);
+    const varService39 = new VariableService(stateManager39);
+    const authService39 = new AuthService(stateManager39, varService39);
+    const httpService39 = new HttpService(stateManager39, varService39, authService39);
+
+    const testEnvResult = stateManager39.createEnvironment('Script Testing Env', `http://127.0.0.1:${scriptPort}`);
+    stateManager39.saveEnvironment('Script Testing Env', testEnvResult.env);
+
+    const execResult = await httpService39.executeRequest({
+      method: 'GET',
+      url: `http://127.0.0.1:${scriptPort}/test-scripts`,
+      environment: 'Script Testing Env',
+      preRequestScript: `
+        bb.request.headers['X-Script-Injected'] = 'confirmed-from-pre-request';
+        bb.environment.set('preVar', 'hello_pre');
+        console.log('Sending request to server');
+      `,
+      postResponseScript: `
+        bb.test('Response is 200 OK', () => {
+          bb.expect(bb.response.status).toBe(200);
+        });
+        const d = bb.response.json();
+        bb.environment.set('tokenFromResponse', d.token);
+        console.log('Received response from', d.serverName);
+      `
+    });
+
+    assert.strictEqual(execResult.status, 200);
+    assert.strictEqual(receivedHeader, 'confirmed-from-pre-request', 'Pre-request injected header must be received by HTTP server');
+    assert(execResult.testResults && execResult.testResults.length === 1 && execResult.testResults[0].passed, 'Post-response test assertion must pass');
+    assert(execResult.consoleLogs.length >= 2, 'Console logs must be collected from both pre and post scripts');
+
+    // Verify environment variable mutations persisted in stateManager
+    const updatedEnv = stateManager39.getEnvironment('Script Testing Env');
+    assert.strictEqual(updatedEnv.variables['preVar'], 'hello_pre', 'Pre-request environment variable must be persisted');
+    assert.strictEqual(updatedEnv.variables['tokenFromResponse'], 'secret_tok_777', 'Post-response environment variable must be persisted');
+
+    if (typeof scriptTestServer.closeAllConnections === 'function') {
+      scriptTestServer.closeAllConnections();
+    }
+    await new Promise((resolve) => scriptTestServer.close(resolve));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    console.log('✓ Pre-Request & Post-Response Scripting Engine, Sandboxed Assertions, PM Parity & Persistence verified');
+  }
+
+  console.log('\nAll 39 verification test suites passed successfully! 🎉');
   process.exit(0);
 })().catch(err => {
   console.error('Async test suite failure:', err);

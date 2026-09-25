@@ -158,11 +158,7 @@ export class BlueByrdExplorerTreeDataProvider
           col.id,
           undefined,
           reqItems,
-          {
-            title: 'Edit Folder Settings',
-            command: 'blueByrdApiClient.editFolder',
-            arguments: [{ collection: col.name, folder: folder.name, collectionId: col.id, folderId: folder.id }],
-          }
+          undefined
         );
       });
 

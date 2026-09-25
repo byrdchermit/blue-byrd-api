@@ -17,20 +17,23 @@ export function getRequestPanelHtml(
   initialInheritedVars: InheritedVariableInfo[] = [],
   initialInheritedHeaders: InheritedHeaderInfo[] = []
 ): string {
+  const activeProfile = context.profileId || context.profile || (state.activeProfileId !== 'all' ? state.activeProfileId : undefined) || state.profiles[0]?.id;
   const profileOptions = state.profiles
     .map((p) => {
       const isDuplicate = state.profiles.filter((o) => o.name === p.name).length > 1;
       const label = isDuplicate ? `${p.name} (${p.id.replace(/^profile-/, '')})` : p.name;
-      const isSelected = p.id === context.profileId || p.name === context.profile || p.id === context.profile;
+      const isSelected = p.id === activeProfile || p.name === activeProfile;
       return `<option value="${escapeHtml(p.name)}" data-id="${escapeHtml(p.id)}" ${isSelected ? 'selected' : ''}>${escapeHtml(label)}</option>`;
     })
     .join('');
 
   const envKeys = Object.keys(state.environments);
+  const activeEnv = context.environment || state.activeEnvironmentName || envKeys[0];
+  const selectedEnvKey = envKeys.find(k => k === activeEnv || state.environments[k]?.id === activeEnv) || envKeys[0];
   const environmentOptions = envKeys
     .map(
       (key) =>
-        `<option value="${escapeHtml(key)}" ${key === (context.environment || envKeys[0]) ? 'selected' : ''}>${escapeHtml(key)}</option>`
+        `<option value="${escapeHtml(key)}" ${key === selectedEnvKey ? 'selected' : ''}>${escapeHtml(key)}</option>`
     )
     .join('');
 
@@ -422,6 +425,70 @@ export function getRequestPanelHtml(
       cursor: pointer;
     }
 
+    /* Collapsible source groups in inherited vars/headers */
+    .var-group {
+      display: flex;
+      flex-direction: column;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      overflow: hidden;
+      margin-bottom: 6px;
+    }
+    .var-group-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      cursor: pointer;
+      background: rgba(255,255,255,0.025);
+      user-select: none;
+      transition: background 0.12s ease;
+    }
+    .var-group-header:hover {
+      background: rgba(255,255,255,0.05);
+    }
+    .var-group-chevron {
+      font-size: 9px;
+      color: var(--muted);
+      transition: transform 0.18s ease;
+      flex-shrink: 0;
+      margin-left: auto;
+    }
+    .var-group-header.collapsed .var-group-chevron {
+      transform: rotate(-90deg);
+    }
+    .var-group-name {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .var-group-count {
+      font-size: 10px;
+      color: var(--muted);
+      background: rgba(255,255,255,0.06);
+      border-radius: 8px;
+      padding: 1px 6px;
+      flex-shrink: 0;
+    }
+    .var-group-body {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      padding: 4px 6px 6px 6px;
+      background: rgba(255,255,255,0.01);
+    }
+    .var-group-header.collapsed + .var-group-body {
+      display: none;
+    }
+    /* Slightly tighter rows inside groups */
+    .var-group .inherited-row {
+      border-radius: 3px;
+    }
+
     .textarea-box {
       width: 100%;
       height: 100%;
@@ -586,6 +653,139 @@ export function getRequestPanelHtml(
     .headers-table td.header-key { font-weight: 600; width: 35%; word-break: break-all; }
     .headers-table td.header-val { word-break: break-all; }
 
+    /* URL preview bar */
+    .url-preview-bar {
+      font-size: 11px;
+      color: var(--muted);
+      padding: 3px 6px 3px 10px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      min-height: 20px;
+      line-height: 18px;
+      font-family: Consolas, Monaco, "Courier New", monospace;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .url-preview-bar.has-unresolved {
+      background: rgba(241, 76, 76, 0.06);
+      border-bottom-color: rgba(241, 76, 76, 0.3);
+    }
+    .url-preview-label {
+      color: var(--muted);
+      font-family: var(--vscode-font-family, inherit);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      flex-shrink: 0;
+    }
+    .url-preview-resolved {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .unresolved-token {
+      color: #f14c4c;
+      background: rgba(241, 76, 76, 0.15);
+      border-radius: 2px;
+      padding: 0 2px;
+      font-family: Consolas, Monaco, "Courier New", monospace;
+    }
+    .url-preview-warn {
+      color: #f14c4c;
+      font-size: 10px;
+      font-family: var(--vscode-font-family, inherit);
+      flex-shrink: 0;
+    }
+
+    /* Scripts tab & Snippet Chips */
+    .snippet-btn {
+      font-size: 10px;
+      padding: 3px 8px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      cursor: pointer;
+      user-select: none;
+      transition: all 0.12s ease;
+    }
+    .snippet-btn:hover {
+      background: var(--primary);
+      color: #ffffff;
+      border-color: var(--primary);
+    }
+    .script-type-btn.active {
+      background: var(--primary);
+      color: var(--primary-fg);
+      border-color: var(--primary);
+    }
+
+    /* Test Results Cards */
+    .test-result-card {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      padding: 8px 12px;
+      border-radius: 4px;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid var(--border);
+      font-size: 12px;
+    }
+    .test-result-card.passed {
+      border-left: 3px solid #238636;
+    }
+    .test-result-card.failed {
+      border-left: 3px solid #f14c4c;
+      background: rgba(241, 76, 76, 0.05);
+    }
+    .test-result-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 500;
+    }
+    .test-pass-icon { color: #238636; font-weight: bold; }
+    .test-fail-icon { color: #f14c4c; font-weight: bold; }
+    .test-error-msg {
+      font-size: 11px;
+      color: #f14c4c;
+      font-family: Consolas, Monaco, monospace;
+      margin-top: 3px;
+      padding: 4px 8px;
+      background: rgba(241,76,76,0.1);
+      border-radius: 3px;
+    }
+
+    /* Console Logs */
+    .console-log-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 4px 6px;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      font-family: Consolas, Monaco, monospace;
+      font-size: 11px;
+      line-height: 1.5;
+    }
+    .console-badge {
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      padding: 1px 4px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+    .console-badge.log { background: rgba(255,255,255,0.1); color: var(--text); }
+    .console-badge.info { background: rgba(79,193,255,0.2); color: #4fc1ff; }
+    .console-badge.warn { background: rgba(204,167,0,0.2); color: #cca700; }
+    .console-badge.error { background: rgba(241,76,76,0.2); color: #f14c4c; }
+    .console-msg { flex: 1; word-break: break-word; white-space: pre-wrap; }
+    .console-time { color: var(--muted); font-size: 10px; flex-shrink: 0; }
+
     ${renderAuthCss()}
   </style>
 </head>
@@ -642,6 +842,13 @@ export function getRequestPanelHtml(
       <button id="btn-save" class="btn btn-secondary">Save</button>
     </div>
 
+    <!-- URL Preview Bar -->
+    <div id="url-preview-bar" class="url-preview-bar" style="display:none;">
+      <span class="url-preview-label">→</span>
+      <span class="url-preview-resolved" id="url-preview-text"></span>
+      <span class="url-preview-warn" id="url-preview-warn" style="display:none;">⚠ unresolved tokens</span>
+    </div>
+
     <!-- Main Workspace -->
     <div class="main-grid">
       <!-- Request Builder -->
@@ -651,6 +858,7 @@ export function getRequestPanelHtml(
           <button class="tab-btn" data-tab="tab-headers">Headers</button>
           <button class="tab-btn" data-tab="tab-body">Body</button>
           <button class="tab-btn" data-tab="tab-auth">Auth</button>
+          <button class="tab-btn" data-tab="tab-scripts">Scripts</button>
           <button class="tab-btn" data-tab="tab-notes">Notes</button>
         </div>
 
@@ -814,6 +1022,44 @@ export function getRequestPanelHtml(
           </div>
         </div>
 
+        <!-- Tab: Scripts -->
+        <div id="tab-scripts" class="tab-content">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; border-bottom:1px solid var(--border); padding-bottom:6px;">
+            <div style="display:flex; gap:6px;">
+              <button type="button" class="btn btn-secondary script-type-btn active" data-script-view="pre" style="font-size:11px; padding:3px 10px;">Pre-Request Script</button>
+              <button type="button" class="btn btn-secondary script-type-btn" data-script-view="post" style="font-size:11px; padding:3px 10px;">Post-Response Script (Tests)</button>
+            </div>
+            <div style="font-size:11px; color:var(--muted);">
+              Access globals: <code style="color:#4ec9b0;">bb</code> & <code style="color:#4ec9b0;">pm</code>
+            </div>
+          </div>
+
+          <!-- Snippet helper bar -->
+          <div style="display:flex; gap:5px; flex-wrap:wrap; margin-bottom:8px; align-items:center;">
+            <span style="font-size:10px; color:var(--muted); margin-right:4px;">SNIPPETS:</span>
+            <button type="button" class="snippet-btn" data-snippet="set-env">+ Set Env Var</button>
+            <button type="button" class="snippet-btn" data-snippet="get-env">+ Get Env Var</button>
+            <button type="button" class="snippet-btn" data-snippet="status-200">+ Status is 200</button>
+            <button type="button" class="snippet-btn" data-snippet="parse-json">+ Parse JSON</button>
+            <button type="button" class="snippet-btn" data-snippet="set-header">+ Set Header</button>
+            <button type="button" class="snippet-btn" data-snippet="hash-sha256">+ SHA-256</button>
+          </div>
+
+          <div id="script-view-pre" class="script-subview">
+            <div style="font-size:11px; color:var(--muted); margin-bottom:6px;">
+              Runs before sending. Mutate <code>bb.request.headers</code>, <code>bb.request.body</code>, or set variables.
+            </div>
+            <textarea id="req-pre-script" class="textarea-box" style="min-height:220px; font-family:Consolas, Monaco, monospace; font-size:12px;" placeholder="// Example: set dynamic timestamp or signature&#10;bb.request.headers['X-Timestamp'] = Date.now().toString();&#10;bb.environment.set('reqId', crypto.randomUUID());">${escapeHtml(context.preRequestScript || '')}</textarea>
+          </div>
+
+          <div id="script-view-post" class="script-subview" style="display:none;">
+            <div style="font-size:11px; color:var(--muted); margin-bottom:6px;">
+              Runs after response. Assert tests with <code>bb.test()</code> and <code>bb.expect()</code>, or store tokens with <code>bb.environment.set()</code>.
+            </div>
+            <textarea id="req-post-script" class="textarea-box" style="min-height:220px; font-family:Consolas, Monaco, monospace; font-size:12px;" placeholder="// Example: assert status 200 and store token&#10;bb.test('Status is 200', () => {&#10;  bb.expect(bb.response.status).toBe(200);&#10;});&#10;&#10;const data = bb.response.json();&#10;if (data.token) {&#10;  bb.environment.set('authToken', data.token);&#10;}">${escapeHtml(context.postResponseScript || '')}</textarea>
+          </div>
+        </div>
+
         <!-- Tab: Notes -->
         <div id="tab-notes" class="tab-content">
           <textarea id="req-notes" class="textarea-box" placeholder="Documentation or notes for this request...">${escapeHtml(context.notes || '')}</textarea>
@@ -836,6 +1082,8 @@ export function getRequestPanelHtml(
         <div class="tab-header">
           <button class="tab-btn active" data-tab="tab-resp-body">Response Body</button>
           <button class="tab-btn" data-tab="tab-resp-headers">Headers <span id="resp-header-count"></span></button>
+          <button class="tab-btn" data-tab="tab-resp-tests">Tests <span id="resp-test-count" class="pill" style="display:none; font-size:10px; padding:1px 6px; margin-left:4px;"></span></button>
+          <button class="tab-btn" data-tab="tab-resp-console">Console <span id="resp-console-count" class="meta-tag" style="display:none; margin-left:4px;"></span></button>
         </div>
 
         <div id="tab-resp-body" class="tab-content active">
@@ -851,6 +1099,18 @@ export function getRequestPanelHtml(
               <tr><td colspan="2" style="color: var(--muted);">No response received.</td></tr>
             </tbody>
           </table>
+        </div>
+
+        <div id="tab-resp-tests" class="tab-content">
+          <div id="test-results-container" style="display:flex; flex-direction:column; gap:6px; padding:10px;">
+            <div style="color: var(--muted); font-size:12px;">No tests executed yet. Add test assertions in the <strong>Scripts &rarr; Post-Response Script</strong> tab using <code>bb.test(...)</code>.</div>
+          </div>
+        </div>
+
+        <div id="tab-resp-console" class="tab-content">
+          <div id="console-logs-container" style="display:flex; flex-direction:column; padding:8px; font-family: Consolas, Monaco, monospace; font-size:11px;">
+            <div style="color: var(--muted); font-size:12px;">No console logs. Use <code>console.log(...)</code> in pre-request or post-response scripts.</div>
+          </div>
         </div>
       </div>
     </div>
@@ -872,6 +1132,8 @@ export function getRequestPanelHtml(
     let initialBodyType = "${escapeHtml(context.bodyType || '')}";
     let initialBody = ${JSON.stringify(context.body || '').replace(/</g, '\\u003c')};
     let initialBodyFormData = ${JSON.stringify(context.bodyFormData || []).replace(/</g, '\\u003c')};
+    const activeCollection = ${JSON.stringify(context.collection || state.collections[0]?.name || 'Demo Collection').replace(/</g, '\\u003c')};
+    const activeFolder = ${JSON.stringify(context.folder && context.folder !== 'Root' ? context.folder : '').replace(/</g, '\\u003c')};
 
     // Tab switching
     document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -897,8 +1159,409 @@ export function getRequestPanelHtml(
     });
     document.addEventListener('click', () => sendDropdown.classList.remove('show'));
 
-    // Variables UI Builder
+    // Script view toggle (Pre-Request vs Post-Response)
+    document.querySelectorAll('.script-type-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.script-type-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const view = btn.getAttribute('data-script-view');
+        const preView = document.getElementById('script-view-pre');
+        const postView = document.getElementById('script-view-post');
+        if (preView) preView.style.display = view === 'pre' ? 'block' : 'none';
+        if (postView) postView.style.display = view === 'post' ? 'block' : 'none';
+      });
+    });
+
+    // Script Snippets
+    document.querySelectorAll('.snippet-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const snippetType = btn.getAttribute('data-snippet');
+        const activeBtn = document.querySelector('.script-type-btn.active');
+        const activeView = activeBtn ? activeBtn.getAttribute('data-script-view') : 'pre';
+        const targetTextarea = activeView === 'pre' ? document.getElementById('req-pre-script') : document.getElementById('req-post-script');
+        if (!targetTextarea) return;
+
+        let snippetCode = '';
+        switch (snippetType) {
+          case 'set-env':
+            snippetCode = 'bb.environment.set("myKey", "myValue");\\n';
+            break;
+          case 'get-env':
+            snippetCode = 'const val = bb.environment.get("myKey");\\nconsole.log("Got value:", val);\\n';
+            break;
+          case 'status-200':
+            snippetCode = 'bb.test("Status code is 200", () => {\\n  bb.expect(bb.response.status).toBe(200);\\n});\\n';
+            break;
+          case 'parse-json':
+            snippetCode = 'const data = bb.response.json();\\nconsole.log("Response payload:", data);\\n';
+            break;
+          case 'set-header':
+            snippetCode = 'bb.request.headers["X-Custom-Header"] = "CustomValue";\\n';
+            break;
+          case 'hash-sha256':
+            snippetCode = 'const hash = crypto.createHash("sha256").update("myMessage").digest("hex");\\nconsole.log("SHA-256:", hash);\\n';
+            break;
+        }
+
+        if (snippetCode) {
+          const start = targetTextarea.selectionStart !== undefined ? targetTextarea.selectionStart : targetTextarea.value.length;
+          const end = targetTextarea.selectionEnd !== undefined ? targetTextarea.selectionEnd : targetTextarea.value.length;
+          const prev = targetTextarea.value;
+          const prefix = (start > 0 && !prev.substring(0, start).endsWith('\\n')) ? '\\n' : '';
+          targetTextarea.value = prev.substring(0, start) + prefix + snippetCode + prev.substring(end);
+          targetTextarea.focus();
+        }
+      });
+    });
+
+    // DOM Containers
     const varRowsContainer = document.getElementById('var-rows');
+    const headerRowsContainer = document.getElementById('header-rows');
+    const inheritedVarsContainer = document.getElementById('inherited-var-rows');
+    const inheritedVarsCount = document.getElementById('inherited-vars-count');
+    const inheritedHeadersContainer = document.getElementById('inherited-header-rows');
+    const inheritedHeadersCount = document.getElementById('inherited-headers-count');
+
+    // URL Preview Bar — live resolved URL with unresolved token highlighting
+    const urlPreviewBar = document.getElementById('url-preview-bar');
+    const urlPreviewText = document.getElementById('url-preview-text');
+    const urlPreviewWarn = document.getElementById('url-preview-warn');
+
+    function updateUrlPreview() {
+      const urlInput = document.getElementById('url-input');
+      if (!urlInput || !urlPreviewBar || !urlPreviewText) return;
+      const raw = urlInput.value.trim();
+
+      if (!raw) {
+        urlPreviewBar.style.display = 'none';
+        return;
+      }
+
+      // Build merged variable map: inherited (lower priority) → request vars (higher priority)
+      const varMap = {};
+      if (currentInheritedVars && currentInheritedVars.length) {
+        // Walk in resolution order; last writer wins (matches server-side precedence)
+        for (const item of currentInheritedVars) {
+          if (!item.isOverridden && item.key && item.value !== undefined) {
+            varMap[item.key] = String(item.value);
+          }
+        }
+        // Also include overridden entries so we have all keys, but only if not already set
+        for (const item of currentInheritedVars) {
+          if (item.isOverridden && item.key && !(item.key in varMap)) {
+            varMap[item.key] = String(item.value ?? '');
+          }
+        }
+      }
+      // Request-level vars override everything
+      if (varRowsContainer) {
+        varRowsContainer.querySelectorAll('.param-row').forEach(row => {
+          const enabled = row.querySelector('[data-role="enabled"]')?.checked;
+          const name = (row.querySelector('[data-role="name"]')?.value || '').trim();
+          const value = row.querySelector('[data-role="value"]')?.value || '';
+          if (enabled && name) varMap[name] = value;
+        });
+      }
+
+      // Tokenise the URL: split on {{varName}} tokens
+      const TOKEN_RE = /\\{\\{([^}]+)\\}\\}/g;
+      let hasUnresolved = false;
+
+      // Build an array of [text | token] segments
+      const segments = [];
+      let lastIndex = 0;
+      let match;
+      TOKEN_RE.lastIndex = 0;
+      while ((match = TOKEN_RE.exec(raw)) !== null) {
+        if (match.index > lastIndex) {
+          segments.push({ type: 'text', value: raw.slice(lastIndex, match.index) });
+        }
+        const key = match[1].trim();
+        const resolved = varMap[key];
+        if (resolved !== undefined) {
+          segments.push({ type: 'resolved', value: resolved });
+        } else {
+          segments.push({ type: 'unresolved', value: match[0] });
+          hasUnresolved = true;
+        }
+        lastIndex = match.index + match[0].length;
+      }
+      if (lastIndex < raw.length) {
+        segments.push({ type: 'text', value: raw.slice(lastIndex) });
+      }
+
+      // Render segments into urlPreviewText
+      urlPreviewText.innerHTML = '';
+      for (const seg of segments) {
+        if (seg.type === 'unresolved') {
+          const span = document.createElement('span');
+          span.className = 'unresolved-token';
+          span.textContent = seg.value;
+          span.title = 'Variable not found in current context';
+          urlPreviewText.appendChild(span);
+        } else {
+          urlPreviewText.appendChild(document.createTextNode(seg.value));
+        }
+      }
+
+      urlPreviewBar.style.display = 'flex';
+      urlPreviewBar.classList.toggle('has-unresolved', hasUnresolved);
+      if (urlPreviewWarn) urlPreviewWarn.style.display = hasUnresolved ? 'inline' : 'none';
+    }
+
+    // Helper functions for reading request state
+    function getRequestVariables() {
+      const vars = [];
+      if (!varRowsContainer) return vars;
+      varRowsContainer.querySelectorAll('.param-row').forEach(row => {
+        const enabled = row.querySelector('[data-role="enabled"]')?.checked;
+        const name = (row.querySelector('[data-role="name"]')?.value || '').trim();
+        const value = row.querySelector('[data-role="value"]')?.value || '';
+        const hidden = row.querySelector('[data-role="hidden"]')?.checked;
+        if (name) {
+          vars.push({ name, value, enabled: !!enabled, hidden: !!hidden });
+        }
+      });
+      return vars;
+    }
+
+    function getRequestHeaders() {
+      const headers = {};
+      if (!headerRowsContainer) return headers;
+      headerRowsContainer.querySelectorAll('.param-row').forEach(row => {
+        const enabled = row.querySelector('[data-role="enabled"]')?.checked;
+        const key = (row.querySelector('[data-role="key"]')?.value || '').trim();
+        const value = row.querySelector('[data-role="value"]')?.value || '';
+        if (enabled && key) {
+          headers[key] = value;
+        }
+      });
+      return headers;
+    }
+
+    // Tracks which groups are collapsed across re-renders
+    const varGroupCollapsed = new Map();   // groupId → boolean
+    const hdrGroupCollapsed = new Map();
+
+    // Helper: build a single inherited-row element
+    function buildInheritedRow(item, isOverridden, keyLabel, onOverride) {
+      const row = document.createElement('div');
+      row.className = 'inherited-row' + (isOverridden ? ' is-overridden' : '');
+
+      const keySpan = document.createElement('span');
+      keySpan.className = 'inherited-key';
+      keySpan.textContent = keyLabel;
+      keySpan.title = item.key;
+
+      const valSpan = document.createElement('span');
+      valSpan.className = 'inherited-val';
+      valSpan.textContent = item.value;
+      valSpan.title = item.value;
+
+      const badgeContainer = document.createElement('div');
+      badgeContainer.style.cssText = 'display:flex;align-items:center;gap:4px;';
+
+      if (isOverridden) {
+        const overPill = document.createElement('span');
+        overPill.className = 'overridden-pill';
+        overPill.textContent = 'Overridden';
+        badgeContainer.appendChild(overPill);
+      }
+
+      const actionDiv = document.createElement('div');
+      if (onOverride && !isOverridden) {
+        const overrideBtn = document.createElement('button');
+        overrideBtn.className = 'btn btn-secondary override-btn';
+        overrideBtn.textContent = '+ Override';
+        overrideBtn.title = 'Copy to request to override';
+        overrideBtn.addEventListener('click', onOverride);
+        actionDiv.appendChild(overrideBtn);
+      }
+
+      row.appendChild(keySpan);
+      row.appendChild(valSpan);
+      row.appendChild(badgeContainer);
+      row.appendChild(actionDiv);
+      return row;
+    }
+
+    // Helper: build a collapsible group wrapper
+    function buildGroup(groupId, source, sourceName, items, collapseMap, defaultCollapsed, buildRowFn) {
+      const wasCollapsed = collapseMap.has(groupId) ? collapseMap.get(groupId) : defaultCollapsed;
+
+      const group = document.createElement('div');
+      group.className = 'var-group';
+
+      const header = document.createElement('div');
+      header.className = 'var-group-header' + (wasCollapsed ? ' collapsed' : '');
+
+      const badge = document.createElement('span');
+      badge.className = 'source-badge source-' + source;
+      badge.textContent = sourceName;
+
+      const name = document.createElement('span');
+      name.className = 'var-group-name';
+      name.textContent = sourceName;
+      // Use badge instead of separate name label for compactness
+      name.style.display = 'none';
+
+      const count = document.createElement('span');
+      count.className = 'var-group-count';
+      count.textContent = items.length + (items.length === 1 ? ' var' : ' vars');
+
+      const chevron = document.createElement('span');
+      chevron.className = 'var-group-chevron';
+      chevron.textContent = '▾';
+
+      header.appendChild(badge);
+      header.appendChild(count);
+      header.appendChild(chevron);
+
+      const body = document.createElement('div');
+      body.className = 'var-group-body';
+      items.forEach(item => body.appendChild(buildRowFn(item)));
+
+      header.addEventListener('click', () => {
+        const isNowCollapsed = header.classList.toggle('collapsed');
+        collapseMap.set(groupId, isNowCollapsed);
+      });
+
+      group.appendChild(header);
+      group.appendChild(body);
+      return group;
+    }
+
+    // --- Inherited Variables Inspector (grouped) ---
+    function renderInheritedVars() {
+      if (!inheritedVarsContainer) return;
+      inheritedVarsContainer.innerHTML = '';
+
+      if (!currentInheritedVars || currentInheritedVars.length === 0) {
+        inheritedVarsContainer.innerHTML = '<div style="font-size: 11px; color: var(--muted); padding: 8px 4px;">No inherited variables for this context.</div>';
+        if (inheritedVarsCount) inheritedVarsCount.textContent = '0 available';
+        return;
+      }
+
+      const reqVarKeys = Array.from(varRowsContainer ? varRowsContainer.querySelectorAll('.param-row') : []).map(row => {
+        const en = row.querySelector('[data-role="enabled"]')?.checked;
+        const k = (row.querySelector('[data-role="name"]')?.value || '').trim();
+        return en && k ? k : null;
+      }).filter(Boolean);
+
+      if (inheritedVarsCount) inheritedVarsCount.textContent = currentInheritedVars.length + ' available';
+
+      // Group items by source key (preserves order of first appearance)
+      const groups = new Map(); // groupId → { source, sourceName, items[] }
+      currentInheritedVars.forEach(item => {
+        const groupId = item.source + '::' + item.sourceName;
+        if (!groups.has(groupId)) groups.set(groupId, { source: item.source, sourceName: item.sourceName, items: [] });
+        groups.get(groupId).items.push(item);
+      });
+
+      groups.forEach(({ source, sourceName, items }, groupId) => {
+        const isDynamic = source === 'dynamic';
+        const group = buildGroup(
+          groupId, source, sourceName, items,
+          varGroupCollapsed,
+          isDynamic, // dynamic starts collapsed
+          (item) => {
+            const isOverridden = item.isOverridden || reqVarKeys.includes(item.key);
+            return buildInheritedRow(
+              item, isOverridden,
+              isDynamic ? item.key : ('{{' + item.key + '}}'),
+              isDynamic ? null : () => {
+                const newRow = addVarRow(item.key, item.value, true, false);
+                const valInp = newRow.querySelector('[data-role="value"]');
+                if (valInp) valInp.focus();
+              }
+            );
+          }
+        );
+        inheritedVarsContainer.appendChild(group);
+      });
+    }
+
+    // --- Inherited Headers Inspector (grouped) ---
+    function renderInheritedHeaders() {
+      if (!inheritedHeadersContainer) return;
+      inheritedHeadersContainer.innerHTML = '';
+
+      if (!currentInheritedHeaders || currentInheritedHeaders.length === 0) {
+        inheritedHeadersContainer.innerHTML = '<div style="font-size: 11px; color: var(--muted); padding: 8px 4px;">No inherited headers for this context.</div>';
+        if (inheritedHeadersCount) inheritedHeadersCount.textContent = '0 inherited';
+        return;
+      }
+
+      const reqHeaderKeys = Array.from(headerRowsContainer ? headerRowsContainer.querySelectorAll('.param-row') : []).map(row => {
+        const en = row.querySelector('[data-role="enabled"]')?.checked;
+        const k = (row.querySelector('[data-role="key"]')?.value || '').trim().toLowerCase();
+        return en && k ? k : null;
+      }).filter(Boolean);
+
+      if (inheritedHeadersCount) inheritedHeadersCount.textContent = currentInheritedHeaders.length + ' inherited';
+
+      const groups = new Map();
+      currentInheritedHeaders.forEach(item => {
+        const groupId = item.source + '::' + item.sourceName;
+        if (!groups.has(groupId)) groups.set(groupId, { source: item.source, sourceName: item.sourceName, items: [] });
+        groups.get(groupId).items.push(item);
+      });
+
+      groups.forEach(({ source, sourceName, items }, groupId) => {
+        const group = buildGroup(
+          groupId, source, sourceName, items,
+          hdrGroupCollapsed,
+          false, // headers always start expanded
+          (item) => {
+            const isOverridden = item.isOverridden || reqHeaderKeys.includes(item.key.toLowerCase());
+            return buildInheritedRow(
+              item, isOverridden,
+              item.key,
+              () => {
+                const newRow = addHeaderRow(item.key, item.value, true);
+                const valInp = newRow.querySelector('[data-role="value"]');
+                if (valInp) valInp.focus();
+              }
+            );
+          }
+        );
+        inheritedHeadersContainer.appendChild(group);
+      });
+    }
+
+    function requestInheritedData() {
+      const selectEnv = document.getElementById('select-env');
+      const selectProfile = document.getElementById('select-profile');
+      vscode.postMessage({
+        type: 'getInherited',
+        payload: {
+          profile: selectProfile ? selectProfile.value : undefined,
+          profileId: selectProfile && selectProfile.selectedOptions[0] ? selectProfile.selectedOptions[0].dataset.id : undefined,
+          environment: selectEnv ? selectEnv.value : undefined,
+          collection: activeCollection,
+          folder: activeFolder,
+          variables: getRequestVariables(),
+          headers: getRequestHeaders()
+        }
+      });
+    }
+
+    const selectEnvEl = document.getElementById('select-env');
+    if (selectEnvEl) {
+      selectEnvEl.addEventListener('change', () => requestInheritedData());
+    }
+    const selectProfileEl = document.getElementById('select-profile');
+    if (selectProfileEl) {
+      selectProfileEl.addEventListener('change', () => requestInheritedData());
+    }
+
+    // Wire URL input → live preview
+    const urlInputEl = document.getElementById('url-input');
+    if (urlInputEl) {
+      urlInputEl.addEventListener('input', () => updateUrlPreview());
+    }
+
+    // Variables UI Builder
     function addVarRow(name = '', value = '', enabled = true, hidden = false) {
       const row = document.createElement('div');
       row.className = 'param-row';
@@ -921,19 +1584,25 @@ export function getRequestPanelHtml(
       row.querySelector('[data-role="delete"]').addEventListener('click', () => {
         row.remove();
         renderInheritedVars();
+        updateUrlPreview();
       });
 
       row.querySelectorAll('input').forEach(input => {
-        input.addEventListener('input', () => renderInheritedVars());
-        input.addEventListener('change', () => renderInheritedVars());
+        input.addEventListener('input', () => { renderInheritedVars(); updateUrlPreview(); });
+        input.addEventListener('change', () => { renderInheritedVars(); updateUrlPreview(); });
       });
 
-      varRowsContainer.appendChild(row);
+      if (varRowsContainer) {
+        varRowsContainer.appendChild(row);
+      }
       renderInheritedVars();
       return row;
     }
 
-    document.getElementById('btn-add-var').addEventListener('click', () => addVarRow());
+    const btnAddVar = document.getElementById('btn-add-var');
+    if (btnAddVar) {
+      btnAddVar.addEventListener('click', () => addVarRow());
+    }
 
     // Populate initial variables
     if (initialVars.length > 0) {
@@ -943,7 +1612,6 @@ export function getRequestPanelHtml(
     }
 
     // Headers UI Builder
-    const headerRowsContainer = document.getElementById('header-rows');
     function addHeaderRow(key = '', value = '', enabled = true) {
       const row = document.createElement('div');
       row.className = 'param-row';
@@ -965,12 +1633,17 @@ export function getRequestPanelHtml(
         input.addEventListener('change', () => renderInheritedHeaders());
       });
 
-      headerRowsContainer.appendChild(row);
+      if (headerRowsContainer) {
+        headerRowsContainer.appendChild(row);
+      }
       renderInheritedHeaders();
       return row;
     }
 
-    document.getElementById('btn-add-header').addEventListener('click', () => addHeaderRow());
+    const btnAddHeader = document.getElementById('btn-add-header');
+    if (btnAddHeader) {
+      btnAddHeader.addEventListener('click', () => addHeaderRow());
+    }
 
     // Populate initial headers
     const headerEntries = Object.entries(initialHeaders);
@@ -980,217 +1653,10 @@ export function getRequestPanelHtml(
       addHeaderRow('Accept', 'application/json', true);
     }
 
-    // --- Inherited Variables Inspector ---
-    const inheritedVarsContainer = document.getElementById('inherited-var-rows');
-    const inheritedVarsCount = document.getElementById('inherited-vars-count');
-
-    function renderInheritedVars() {
-      if (!inheritedVarsContainer) return;
-      inheritedVarsContainer.innerHTML = '';
-      if (!currentInheritedVars || currentInheritedVars.length === 0) {
-        inheritedVarsContainer.innerHTML = '<div style="font-size: 11px; color: var(--muted); padding: 8px 4px;">No inherited variables for this context.</div>';
-        if (inheritedVarsCount) inheritedVarsCount.textContent = '0 available';
-        return;
-      }
-
-      // Check current request variable keys to know if overridden
-      const reqVarKeys = Array.from(varRowsContainer.querySelectorAll('.param-row')).map(row => {
-        const en = row.querySelector('[data-role="enabled"]')?.checked;
-        const k = (row.querySelector('[data-role="name"]')?.value || '').trim();
-        return en && k ? k : null;
-      }).filter(Boolean);
-
-      if (inheritedVarsCount) inheritedVarsCount.textContent = currentInheritedVars.length + ' available';
-
-      currentInheritedVars.forEach(item => {
-        const isOverridden = item.isOverridden || reqVarKeys.includes(item.key);
-        const row = document.createElement('div');
-        row.className = 'inherited-row' + (isOverridden ? ' is-overridden' : '');
-
-        const keySpan = document.createElement('span');
-        keySpan.className = 'inherited-key';
-        keySpan.textContent = '{{' + item.key + '}}';
-        keySpan.title = item.key;
-
-        const valSpan = document.createElement('span');
-        valSpan.className = 'inherited-val';
-        valSpan.textContent = item.value;
-        valSpan.title = item.value;
-
-        const badgeContainer = document.createElement('div');
-        badgeContainer.style.display = 'flex';
-        badgeContainer.style.alignItems = 'center';
-        badgeContainer.style.gap = '4px';
-
-        const sourceBadge = document.createElement('span');
-        sourceBadge.className = 'source-badge source-' + item.source;
-        sourceBadge.textContent = item.sourceName;
-        badgeContainer.appendChild(sourceBadge);
-
-        if (isOverridden) {
-          const overPill = document.createElement('span');
-          overPill.className = 'overridden-pill';
-          overPill.textContent = 'Overridden';
-          badgeContainer.appendChild(overPill);
-        }
-
-        const actionDiv = document.createElement('div');
-        if (item.source !== 'dynamic' && !isOverridden) {
-          const overrideBtn = document.createElement('button');
-          overrideBtn.className = 'btn btn-secondary override-btn';
-          overrideBtn.textContent = '+ Override';
-          overrideBtn.title = 'Copy to request variables to override';
-          overrideBtn.addEventListener('click', () => {
-            const newRow = addVarRow(item.key, item.value, true, false);
-            const valInp = newRow.querySelector('[data-role="value"]');
-            if (valInp) valInp.focus();
-          });
-          actionDiv.appendChild(overrideBtn);
-        }
-
-        row.appendChild(keySpan);
-        row.appendChild(valSpan);
-        row.appendChild(badgeContainer);
-        row.appendChild(actionDiv);
-
-        inheritedVarsContainer.appendChild(row);
-      });
-    }
-
-    // --- Inherited Headers Inspector ---
-    const inheritedHeadersContainer = document.getElementById('inherited-header-rows');
-    const inheritedHeadersCount = document.getElementById('inherited-headers-count');
-
-    function renderInheritedHeaders() {
-      if (!inheritedHeadersContainer) return;
-      inheritedHeadersContainer.innerHTML = '';
-      if (!currentInheritedHeaders || currentInheritedHeaders.length === 0) {
-        inheritedHeadersContainer.innerHTML = '<div style="font-size: 11px; color: var(--muted); padding: 8px 4px;">No inherited headers for this context.</div>';
-        if (inheritedHeadersCount) inheritedHeadersCount.textContent = '0 inherited';
-        return;
-      }
-
-      // Check current request header keys to know if overridden
-      const reqHeaderKeys = Array.from(headerRowsContainer.querySelectorAll('.param-row')).map(row => {
-        const en = row.querySelector('[data-role="enabled"]')?.checked;
-        const k = (row.querySelector('[data-role="key"]')?.value || '').trim().toLowerCase();
-        return en && k ? k : null;
-      }).filter(Boolean);
-
-      if (inheritedHeadersCount) inheritedHeadersCount.textContent = currentInheritedHeaders.length + ' inherited';
-
-      currentInheritedHeaders.forEach(item => {
-        const isOverridden = item.isOverridden || reqHeaderKeys.includes(item.key.toLowerCase());
-        const row = document.createElement('div');
-        row.className = 'inherited-row' + (isOverridden ? ' is-overridden' : '');
-
-        const keySpan = document.createElement('span');
-        keySpan.className = 'inherited-key';
-        keySpan.textContent = item.key;
-        keySpan.title = item.key;
-
-        const valSpan = document.createElement('span');
-        valSpan.className = 'inherited-val';
-        valSpan.textContent = item.value;
-        valSpan.title = item.value;
-
-        const badgeContainer = document.createElement('div');
-        badgeContainer.style.display = 'flex';
-        badgeContainer.style.alignItems = 'center';
-        badgeContainer.style.gap = '4px';
-
-        const sourceBadge = document.createElement('span');
-        sourceBadge.className = 'source-badge source-' + item.source;
-        sourceBadge.textContent = item.sourceName;
-        badgeContainer.appendChild(sourceBadge);
-
-        if (isOverridden) {
-          const overPill = document.createElement('span');
-          overPill.className = 'overridden-pill';
-          overPill.textContent = 'Overridden';
-          badgeContainer.appendChild(overPill);
-        }
-
-        const actionDiv = document.createElement('div');
-        if (!isOverridden) {
-          const overrideBtn = document.createElement('button');
-          overrideBtn.className = 'btn btn-secondary override-btn';
-          overrideBtn.textContent = '+ Override';
-          overrideBtn.title = 'Copy to request headers to override';
-          overrideBtn.addEventListener('click', () => {
-            const newRow = addHeaderRow(item.key, item.value, true);
-            const valInp = newRow.querySelector('[data-role="value"]');
-            if (valInp) valInp.focus();
-          });
-          actionDiv.appendChild(overrideBtn);
-        }
-
-        row.appendChild(keySpan);
-        row.appendChild(valSpan);
-        row.appendChild(badgeContainer);
-        row.appendChild(actionDiv);
-
-        inheritedHeadersContainer.appendChild(row);
-      });
-    }
-
-    // Helper functions for reading request state
-    function getRequestVariables() {
-      const vars = [];
-      varRowsContainer.querySelectorAll('.param-row').forEach(row => {
-        const enabled = row.querySelector('[data-role="enabled"]').checked;
-        const name = (row.querySelector('[data-role="name"]').value || '').trim();
-        const value = row.querySelector('[data-role="value"]').value;
-        const hidden = row.querySelector('[data-role="hidden"]').checked;
-        if (name) {
-          vars.push({ name, value, enabled, hidden });
-        }
-      });
-      return vars;
-    }
-
-    function getRequestHeaders() {
-      const headers = {};
-      headerRowsContainer.querySelectorAll('.param-row').forEach(row => {
-        const enabled = row.querySelector('[data-role="enabled"]').checked;
-        const key = (row.querySelector('[data-role="key"]').value || '').trim();
-        const value = row.querySelector('[data-role="value"]').value;
-        if (enabled && key) {
-          headers[key] = value;
-        }
-      });
-      return headers;
-    }
-
-    function requestInheritedData() {
-      const selectEnv = document.getElementById('select-env');
-      const selectProfile = document.getElementById('select-profile');
-      vscode.postMessage({
-        type: 'getInherited',
-        payload: {
-          profile: selectProfile ? selectProfile.value : undefined,
-          profileId: selectProfile && selectProfile.selectedOptions[0] ? selectProfile.selectedOptions[0].dataset.id : undefined,
-          environment: selectEnv ? selectEnv.value : undefined,
-          collection: "${context.collection || 'Demo Collection'}",
-          folder: "${context.folder || 'Root'}",
-          variables: getRequestVariables(),
-          headers: getRequestHeaders()
-        }
-      });
-    }
-
-    const selectEnvEl = document.getElementById('select-env');
-    if (selectEnvEl) {
-      selectEnvEl.addEventListener('change', () => requestInheritedData());
-    }
-    const selectProfileEl = document.getElementById('select-profile');
-    if (selectProfileEl) {
-      selectProfileEl.addEventListener('change', () => requestInheritedData());
-    }
-
-    // Initial render of inherited tables
+    // Initial render of inherited tables and URL preview
     renderInheritedVars();
     renderInheritedHeaders();
+    updateUrlPreview();
 
     // Form row builder for form-urlencoded
     function addFormRow(container, key = '', value = '', enabled = true) {
@@ -1523,28 +1989,12 @@ export function getRequestPanelHtml(
 
     // Helper to get variables array
     function getVariables() {
-      return Array.from(varRowsContainer.querySelectorAll('.param-row')).map(row => {
-        const name = row.querySelector('[data-role="name"]').value.trim();
-        const value = row.querySelector('[data-role="value"]').value;
-        const enabled = row.querySelector('[data-role="enabled"]').checked;
-        const hidden = row.querySelector('[data-role="hidden"]').checked;
-        return name ? { name, value, enabled, hidden } : null;
-      }).filter(Boolean);
+      return getRequestVariables();
     }
 
     // Helper to get headers map
     function getHeaders() {
-      const headers = {};
-      varRowsContainer.querySelectorAll('.param-row');
-      headerRowsContainer.querySelectorAll('.param-row').forEach(row => {
-        const enabled = row.querySelector('[data-role="enabled"]').checked;
-        const key = row.querySelector('[data-role="key"]').value.trim();
-        const value = row.querySelector('[data-role="value"]').value;
-        if (enabled && key) {
-          headers[key] = value;
-        }
-      });
-      return headers;
+      return getRequestHeaders();
     }
 
     // Helper to get auth settings
@@ -1571,15 +2021,17 @@ export function getRequestPanelHtml(
         profile: profileSelect ? profileSelect.value : '',
         profileId: profileId,
         environment: document.getElementById('select-env').value,
-        collection: "${collectionName}",
-        folder: "${displayFolder === 'Root' ? '' : displayFolder}",
+        collection: activeCollection,
+        folder: activeFolder,
         headers: getHeaders(),
         body: bodyInfo.body,
         bodyType: bodyInfo.bodyType,
         bodyFormData: bodyInfo.bodyFormData,
         variables: getVariables(),
         auth: getAuthSettings(),
-        notes: document.getElementById('req-notes').value
+        notes: document.getElementById('req-notes').value,
+        preRequestScript: document.getElementById('req-pre-script')?.value || '',
+        postResponseScript: document.getElementById('req-post-script')?.value || ''
       };
     }
 
@@ -1646,28 +2098,72 @@ export function getRequestPanelHtml(
         const statusPill = document.getElementById('resp-status');
         const timeTag = document.getElementById('resp-time');
         const sizeTag = document.getElementById('resp-size');
+        const bodyPre = document.getElementById('resp-body-text');
 
-        statusPill.textContent = meta.status === 0 ? 'Error' : \`\${meta.status} \${meta.statusText}\`;
-        statusPill.className = 'pill';
-        if (meta.status >= 200 && meta.status < 300) statusPill.classList.add('status-2xx');
-        else if (meta.status >= 300 && meta.status < 400) statusPill.classList.add('status-3xx');
-        else if (meta.status >= 400 && meta.status < 500) statusPill.classList.add('status-4xx');
-        else if (meta.status >= 500) statusPill.classList.add('status-5xx');
-        else statusPill.classList.add('status-err');
+        // Status pill
+        if (meta.status === 0) {
+          statusPill.textContent = meta.statusText || 'Error';
+          statusPill.className = 'pill status-err';
+        } else {
+          statusPill.textContent = \`\${meta.status} \${meta.statusText}\`;
+          statusPill.className = 'pill';
+          if (meta.status >= 200 && meta.status < 300) statusPill.classList.add('status-2xx');
+          else if (meta.status >= 300 && meta.status < 400) statusPill.classList.add('status-3xx');
+          else if (meta.status >= 400 && meta.status < 500) statusPill.classList.add('status-4xx');
+          else if (meta.status >= 500) statusPill.classList.add('status-5xx');
+        }
 
         timeTag.textContent = \`\${meta.elapsedMs} ms\`;
-        if (meta.sizeBytes) {
+        if (meta.status === 0) {
+          sizeTag.textContent = '';
+        } else if (meta.sizeBytes) {
           const sizeKb = (meta.sizeBytes / 1024).toFixed(1);
           sizeTag.textContent = \`\${sizeKb} KB\`;
         }
 
-        // Format body
-        const bodyPre = document.getElementById('resp-body-text');
-        try {
-          const json = JSON.parse(meta.body);
-          bodyPre.textContent = JSON.stringify(json, null, 2);
-        } catch {
-          bodyPre.textContent = meta.body || '(Empty response)';
+        // Body rendering
+        if (meta.status === 0) {
+          // Network error — render diagnostic card
+          bodyPre.innerHTML = '';
+          bodyPre.style.padding = '0';
+
+          const card = document.createElement('div');
+          card.style.cssText = [
+            'margin: 12px',
+            'padding: 14px 16px',
+            'border-radius: 6px',
+            'border: 1px solid rgba(241,76,76,0.35)',
+            'background: rgba(241,76,76,0.07)',
+            'font-family: Consolas, Monaco, "Courier New", monospace',
+            'font-size: 12px',
+            'color: var(--text)',
+            'white-space: pre-wrap',
+            'word-break: break-word',
+            'line-height: 1.6'
+          ].join(';');
+
+          const heading = document.createElement('div');
+          heading.style.cssText = 'font-size: 13px; font-weight: 700; color: #f14c4c; margin-bottom: 10px; font-family: var(--vscode-font-family, inherit); display: flex; align-items: center; gap: 6px;';
+          heading.innerHTML = '⚠ ' + (meta.statusText || 'Network Error');
+
+          const body = document.createElement('pre');
+          body.style.cssText = 'margin: 0; padding: 0; background: transparent; font-size: 12px; color: var(--text); white-space: pre-wrap; word-break: break-word;';
+          body.textContent = meta.body || 'An unknown network error occurred.';
+
+          card.appendChild(heading);
+          card.appendChild(body);
+          bodyPre.appendChild(card);
+          bodyPre.style.padding = '0';
+        } else {
+          // Normal response
+          bodyPre.innerHTML = '';
+          bodyPre.style.padding = '12px';
+          try {
+            const json = JSON.parse(meta.body);
+            bodyPre.textContent = JSON.stringify(json, null, 2);
+          } catch {
+            bodyPre.textContent = meta.body || '(Empty response)';
+          }
         }
 
         // Response headers
@@ -1690,6 +2186,91 @@ export function getRequestPanelHtml(
           });
         } else {
           headersTbody.innerHTML = '<tr><td colspan="2" style="color: var(--muted);">No headers received.</td></tr>';
+        }
+
+        // Render test results
+        const testBadge = document.getElementById('resp-test-count');
+        const testsContainer = document.getElementById('test-results-container');
+        if (testsContainer) {
+          testsContainer.innerHTML = '';
+          if (meta.testResults && meta.testResults.length > 0) {
+            const passedCount = meta.testResults.filter(t => t.passed).length;
+            const totalCount = meta.testResults.length;
+            if (testBadge) {
+              testBadge.style.display = 'inline-block';
+              testBadge.textContent = \`\${passedCount}/\${totalCount}\`;
+              testBadge.className = 'pill ' + (passedCount === totalCount ? 'status-2xx' : 'status-err');
+            }
+
+            meta.testResults.forEach(t => {
+              const card = document.createElement('div');
+              card.className = 'test-result-card ' + (t.passed ? 'passed' : 'failed');
+
+              const header = document.createElement('div');
+              header.className = 'test-result-header';
+
+              const icon = document.createElement('span');
+              icon.className = t.passed ? 'test-pass-icon' : 'test-fail-icon';
+              icon.textContent = t.passed ? '✔' : '✖';
+
+              const title = document.createElement('span');
+              title.textContent = t.name;
+
+              header.appendChild(icon);
+              header.appendChild(title);
+              card.appendChild(header);
+
+              if (!t.passed && t.error) {
+                const errDiv = document.createElement('div');
+                errDiv.className = 'test-error-msg';
+                errDiv.textContent = t.error;
+                card.appendChild(errDiv);
+              }
+
+              testsContainer.appendChild(card);
+            });
+          } else {
+            if (testBadge) testBadge.style.display = 'none';
+            testsContainer.innerHTML = '<div style="color: var(--muted); font-size:12px;">No tests executed for this request. Add assertions in the <strong>Scripts &rarr; Post-Response Script</strong> tab using <code>bb.test(...)</code>.</div>';
+          }
+        }
+
+        // Render console logs
+        const consoleBadge = document.getElementById('resp-console-count');
+        const consoleContainer = document.getElementById('console-logs-container');
+        if (consoleContainer) {
+          consoleContainer.innerHTML = '';
+          if (meta.consoleLogs && meta.consoleLogs.length > 0) {
+            if (consoleBadge) {
+              consoleBadge.style.display = 'inline-block';
+              consoleBadge.textContent = \`(\${meta.consoleLogs.length})\`;
+            }
+
+            meta.consoleLogs.forEach(l => {
+              const row = document.createElement('div');
+              row.className = 'console-log-row';
+
+              const timeSpan = document.createElement('span');
+              timeSpan.className = 'console-time';
+              timeSpan.textContent = new Date(l.timestamp).toLocaleTimeString([], { hour12: false });
+
+              const badgeSpan = document.createElement('span');
+              badgeSpan.className = 'console-badge ' + l.level;
+              badgeSpan.textContent = l.level;
+
+              const msgSpan = document.createElement('span');
+              msgSpan.className = 'console-msg';
+              msgSpan.textContent = l.message;
+
+              row.appendChild(timeSpan);
+              row.appendChild(badgeSpan);
+              row.appendChild(msgSpan);
+              consoleContainer.appendChild(row);
+            });
+          } else {
+            if (consoleBadge) consoleBadge.style.display = 'none';
+            consoleContainer.innerHTML = '<div style="color: var(--muted); font-size:12px;">No console logs. Use <code>console.log(...)</code> in pre-request or post-response scripts.</div>';
+          }
         }
       }
 
@@ -1718,6 +2299,7 @@ export function getRequestPanelHtml(
         currentInheritedHeaders = msg.inheritedHeaders || [];
         renderInheritedVars();
         renderInheritedHeaders();
+        updateUrlPreview();
       }
 
       if (msg.type === 'preview') {
@@ -1726,6 +2308,28 @@ export function getRequestPanelHtml(
         const statusPill = document.getElementById('resp-status');
         statusPill.textContent = 'Preview';
         statusPill.className = 'pill status-3xx';
+      }
+
+      if (msg.type === 'activeEnvironmentChanged' && msg.envName) {
+        const selectEnv = document.getElementById('select-env');
+        if (selectEnv) {
+          selectEnv.value = msg.envName;
+          requestInheritedData();
+        }
+      }
+
+      if (msg.type === 'activeProfileChanged' && (msg.profileId || msg.profileName)) {
+        const selectProfile = document.getElementById('select-profile');
+        if (selectProfile) {
+          for (let i = 0; i < selectProfile.options.length; i++) {
+            const opt = selectProfile.options[i];
+            if ((msg.profileId && opt.dataset.id === msg.profileId) || (msg.profileName && opt.value === msg.profileName)) {
+              selectProfile.selectedIndex = i;
+              break;
+            }
+          }
+          requestInheritedData();
+        }
       }
     });
   </script>

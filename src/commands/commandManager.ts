@@ -1,36 +1,42 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { RequestContext } from '../types';
+import { RequestContext, StoredToken } from '../types';
 import { BlueByrdStateManager } from '../state/stateManager';
 import { HttpService } from '../services/httpService';
 import { VariableService } from '../services/variableService';
 import { AuthService } from '../services/authService';
+import { TokenService } from '../services/tokenService';
 import { ImportExportService } from '../services/importExportService';
 import { UpdateService } from '../services/updateService';
 import { BlueByrdPanel } from '../views/panels/requestPanel';
 import { BlueByrdSettingsPanel } from '../views/panels/settingsPanel';
 import { BlueByrdHistoryPanel } from '../views/panels/historyPanel';
-import { BlueByrdExplorerTreeDataProvider } from '../views/tree/explorerTreeDataProvider';
 import { BlueByrdTreeItem } from '../views/tree/treeItem';
+
+export interface TreeRefreshable {
+  refresh(): void;
+}
 
 export class CommandManager {
   private readonly context: vscode.ExtensionContext;
   private readonly stateManager: BlueByrdStateManager;
-  private readonly treeProvider: BlueByrdExplorerTreeDataProvider;
+  private readonly treeProvider: TreeRefreshable;
   private readonly httpService: HttpService;
   private readonly variableService: VariableService;
   private readonly authService: AuthService;
   private readonly updateService: UpdateService;
+  private readonly tokenService: TokenService;
 
   constructor(
     context: vscode.ExtensionContext,
     stateManager: BlueByrdStateManager,
-    treeProvider: BlueByrdExplorerTreeDataProvider,
+    treeProvider: TreeRefreshable,
     httpService: HttpService,
     variableService: VariableService,
     authService: AuthService,
-    updateService?: UpdateService
+    updateService?: UpdateService,
+    tokenService?: TokenService
   ) {
     this.context = context;
     this.stateManager = stateManager;
@@ -39,6 +45,7 @@ export class CommandManager {
     this.variableService = variableService;
     this.authService = authService;
     this.updateService = updateService || new UpdateService(context);
+    this.tokenService = tokenService || new TokenService(context.secrets);
   }
 
   public registerAll(): void {
@@ -188,6 +195,10 @@ export class CommandManager {
 
         const newId = selected.profileId === 'all' ? undefined : selected.profileId;
         this.stateManager.setActiveProfileId(newId);
+        if (newId) {
+          const prof = this.stateManager.getProfile(newId);
+          if (prof) BlueByrdPanel.broadcastActiveProfile(prof.id, prof.name);
+        }
         this.treeProvider.refresh();
         vscode.window.showInformationMessage(`Active profile scope set to: ${selected.label.replace(/^\$\([^)]+\)\s*/, '')}`);
       })
@@ -212,8 +223,178 @@ export class CommandManager {
         const profile = this.stateManager.getProfile(profileId) || this.stateManager.getProfile(profileName);
         if (profile) {
           this.stateManager.setActiveProfileId(profile.id);
+          BlueByrdPanel.broadcastActiveProfile(profile.id, profile.name);
           this.treeProvider.refresh();
           vscode.window.showInformationMessage(`Active profile scope set to: ${profile.name}`);
+        }
+      })
+    );
+
+    // Manage OAuth Tokens (QuickPick Token Vault)
+    s.push(
+      vscode.commands.registerCommand('blueByrdApiClient.manageTokens', async (arg?: BlueByrdTreeItem | { profileId?: string }) => {
+        let profileId = (arg instanceof BlueByrdTreeItem ? arg.parentId || arg.itemId : arg?.profileId) || this.stateManager.getActiveProfileId() || 'global';
+        if (profileId === 'all') profileId = 'global';
+
+        const profile = this.stateManager.getProfile(profileId);
+        const profileName = profile ? profile.name : (profileId === 'global' ? 'Shared / Global' : profileId);
+
+        const picker = vscode.window.createQuickPick<vscode.QuickPickItem & { token?: StoredToken; action?: string }>();
+        picker.title = `Stored OAuth Tokens - ${profileName}`;
+        picker.placeholder = 'Click trash to delete a token, or select to copy access token';
+        picker.matchOnDescription = true;
+        picker.matchOnDetail = true;
+
+        const refreshPicker = async () => {
+          await this.tokenService.pruneExpiredTokens(profileId);
+          const tokens = await this.tokenService.getTokens(profileId);
+          const now = Date.now();
+
+          const items: Array<vscode.QuickPickItem & { token?: StoredToken; action?: string }> = [];
+
+          if (tokens.length === 0) {
+            items.push({
+              label: '$(info) No stored OAuth tokens for this profile',
+              description: 'Mint a token via OAuth 2.0 to populate this vault',
+              action: 'none',
+            });
+          } else {
+            const sorted = [...tokens].sort((a, b) => b.expiresAt - a.expiresAt);
+            for (const t of sorted) {
+              const isExpired = t.expiresAt <= now;
+              const timeStr = new Date(t.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+              const dateStr = new Date(t.expiresAt).toLocaleDateString([], { month: 'short', day: 'numeric' });
+              const expiryDesc = isExpired ? `Expired (${dateStr} ${timeStr})` : `Expires ${timeStr}`;
+              const descParts = [t.tier, expiryDesc, t.refreshToken ? 'refreshable' : undefined].filter(Boolean);
+
+              items.push({
+                label: `$(key) ${t.envName || t.tokenName || t.tier || 'Access Token'}`,
+                description: descParts.join(' • '),
+                detail: `Token: ${t.accessToken.substring(0, 16)}...`,
+                token: t,
+                buttons: [{ iconPath: new vscode.ThemeIcon('trash'), tooltip: 'Delete this token' }],
+              });
+            }
+
+            items.push({
+              label: '$(clear-all) Clear All Stored Tokens...',
+              description: `Delete all ${tokens.length} token${tokens.length === 1 ? '' : 's'} for ${profileName}`,
+              action: 'clearAll',
+            });
+          }
+
+          picker.items = items;
+        };
+
+        await refreshPicker();
+
+        picker.onDidTriggerItemButton(async (e) => {
+          if (e.item.token) {
+            const token = e.item.token;
+            const label = token.envName || token.tokenName || 'token';
+            const confirm = await vscode.window.showWarningMessage(
+              `Delete stored token "${label}"?`,
+              { modal: true },
+              'Delete'
+            );
+            if (confirm === 'Delete') {
+              await this.tokenService.deleteToken(profileId, token.id);
+              this.treeProvider.refresh();
+              await refreshPicker();
+              vscode.window.showInformationMessage(`Token "${label}" deleted.`);
+            }
+          }
+        });
+
+        picker.onDidAccept(async () => {
+          const selected = picker.selectedItems[0];
+          if (!selected) return;
+
+          if (selected.action === 'clearAll') {
+            picker.hide();
+            await vscode.commands.executeCommand('blueByrdApiClient.clearProfileTokens', { id: profileId, name: profileName });
+            return;
+          }
+
+          if (selected.token) {
+            await vscode.env.clipboard.writeText(selected.token.accessToken);
+            vscode.window.showInformationMessage(`Access token copied to clipboard.`);
+            picker.hide();
+          }
+        });
+
+        picker.onDidHide(() => picker.dispose());
+        picker.show();
+      })
+    );
+
+    // Delete Token directly
+    s.push(
+      vscode.commands.registerCommand('blueByrdApiClient.deleteToken', async (arg?: BlueByrdTreeItem | { profileId?: string; id?: string; name?: string }) => {
+        let profileId: string | undefined;
+        let tokenId: string | undefined;
+        let tokenLabel: string | undefined;
+
+        if (arg instanceof BlueByrdTreeItem) {
+          profileId = arg.parentId;
+          tokenId = arg.itemId;
+          tokenLabel = arg.label;
+        } else if (arg && typeof arg === 'object') {
+          profileId = arg.profileId;
+          tokenId = arg.id;
+          tokenLabel = arg.name;
+        }
+
+        if (!profileId || !tokenId) return;
+
+        const confirm = await vscode.window.showWarningMessage(
+          `Delete stored OAuth token "${tokenLabel || 'token'}"?`,
+          { modal: true },
+          'Delete'
+        );
+        if (confirm === 'Delete') {
+          await this.tokenService.deleteToken(profileId, tokenId);
+          this.treeProvider.refresh();
+          vscode.window.showInformationMessage(`Token "${tokenLabel || 'token'}" deleted.`);
+        }
+      })
+    );
+
+    // Clear All Tokens for a Profile
+    s.push(
+      vscode.commands.registerCommand('blueByrdApiClient.clearProfileTokens', async (arg?: BlueByrdTreeItem | { id?: string; name?: string }) => {
+        let profileId = (arg instanceof BlueByrdTreeItem ? arg.itemId : arg?.id) || this.stateManager.getActiveProfileId() || 'global';
+        const profile = this.stateManager.getProfile(profileId);
+        const profileName = profile ? profile.name : (profileId === 'global' ? 'Shared / Global' : profileId);
+
+        const tokens = await this.tokenService.getTokens(profileId);
+        if (tokens.length === 0) {
+          vscode.window.showInformationMessage(`No stored OAuth tokens found for "${profileName}".`);
+          return;
+        }
+
+        const confirm = await vscode.window.showWarningMessage(
+          `Delete all ${tokens.length} stored OAuth token${tokens.length === 1 ? '' : 's'} for "${profileName}"? Requests using OAuth 2.0 under this profile will need to authenticate again.`,
+          { modal: true },
+          'Delete All'
+        );
+        if (confirm === 'Delete All') {
+          await this.tokenService.clearTokens(profileId);
+          this.treeProvider.refresh();
+          vscode.window.showInformationMessage(`All tokens for "${profileName}" have been cleared.`);
+        }
+      })
+    );
+
+    // Copy Token to Clipboard
+    s.push(
+      vscode.commands.registerCommand('blueByrdApiClient.copyToken', async (arg?: BlueByrdTreeItem) => {
+        if (!arg || !arg.itemId || !arg.parentId) return;
+        const tokens = await this.tokenService.getTokens(arg.parentId);
+        const token = tokens.find((t) => t.id === arg.itemId);
+        if (token && token.accessToken) {
+          await vscode.env.clipboard.writeText(token.accessToken);
+          vscode.window.showInformationMessage(`Copied token to clipboard.`);
         }
       })
     );
@@ -259,9 +440,12 @@ export class CommandManager {
           return;
         }
 
-        this.stateManager.setActiveEnvironmentName(selected.envName);
-        this.treeProvider.refresh();
-        vscode.window.showInformationMessage(`Active environment set to: ${selected.envName}`);
+        if (selected.envName) {
+          this.stateManager.setActiveEnvironmentName(selected.envName);
+          BlueByrdPanel.broadcastActiveEnvironment(selected.envName);
+          this.treeProvider.refresh();
+          vscode.window.showInformationMessage(`Active environment set to: ${selected.envName}`);
+        }
       })
     );
 
@@ -280,6 +464,7 @@ export class CommandManager {
 
         if (envName) {
           this.stateManager.setActiveEnvironmentName(envName);
+          BlueByrdPanel.broadcastActiveEnvironment(envName);
           this.treeProvider.refresh();
           vscode.window.showInformationMessage(`Active environment set to: ${envName}`);
         }
@@ -424,6 +609,116 @@ export class CommandManager {
       })
     );
 
+    // Create Child Environment
+    s.push(
+      vscode.commands.registerCommand('blueByrdApiClient.createChildEnvironment', async (treeItem?: BlueByrdTreeItem | { id?: string; name?: string }) => {
+        let parentId: string | undefined;
+        let parentName: string | undefined;
+
+        if (treeItem instanceof BlueByrdTreeItem) {
+          parentId = treeItem.itemId;
+          parentName = treeItem.label;
+        } else if (treeItem && typeof treeItem === 'object') {
+          parentId = treeItem.id;
+          parentName = treeItem.name;
+        }
+
+        const state = this.stateManager.getState();
+        const parentEnv = parentId
+          ? this.stateManager.getEnvironment(parentId)
+          : (parentName ? this.stateManager.getEnvironment(parentName) : undefined);
+
+        const name = await vscode.window.showInputBox({
+          prompt: `Enter child environment name (inheriting from ${parentName || 'parent'})`,
+          placeHolder: 'e.g. DC1 - Fulfillment',
+          validateInput: (value) => {
+            if (!value || !value.trim()) return 'Environment name cannot be empty.';
+            if (state.environments[value.trim()]) return 'An environment with this name already exists.';
+            return undefined;
+          },
+        });
+
+        if (!name || !name.trim()) return;
+
+        const created = this.stateManager.createEnvironment(
+          name.trim(),
+          parentEnv?.baseUrl || '',
+          parentEnv?.profileId || this.stateManager.getActiveProfileId()
+        );
+        created.env.inheritsFrom = parentEnv?.id || parentId || parentName;
+        this.stateManager.saveEnvironment(name.trim(), created.env);
+        this.treeProvider.refresh();
+        vscode.window.showInformationMessage(`Child environment '${name.trim()}' created under '${parentName}'.`);
+        BlueByrdSettingsPanel.createOrShow(
+          this.context.extensionUri,
+          'environment',
+          created.name,
+          this.stateManager,
+          undefined,
+          created.env.id
+        );
+      })
+    );
+
+    // Clone Environment
+    s.push(
+      vscode.commands.registerCommand('blueByrdApiClient.cloneEnvironment', async (treeItem?: BlueByrdTreeItem | { id?: string; name?: string } | string) => {
+        let envIdOrName: string | undefined;
+
+        if (treeItem instanceof BlueByrdTreeItem) {
+          envIdOrName = treeItem.itemId || treeItem.label;
+        } else if (typeof treeItem === 'string') {
+          envIdOrName = treeItem;
+        } else if (treeItem && typeof treeItem === 'object') {
+          envIdOrName = (treeItem as any).id || (treeItem as any).name || (treeItem as any).label;
+        }
+
+        if (!envIdOrName) {
+          const envs = this.stateManager.getEnvironments();
+          const picks = Object.entries(envs).map(([name, env]) => ({
+            label: name,
+            description: env.baseUrl,
+            envId: env.id,
+          }));
+          if (picks.length === 0) {
+            vscode.window.showWarningMessage('No environments found to clone.');
+            return;
+          }
+          const selected = await vscode.window.showQuickPick(picks, {
+            placeHolder: 'Select an environment to clone',
+          });
+          if (!selected) return;
+          envIdOrName = selected.envId;
+        }
+
+        const sourceEnv = this.stateManager.getEnvironment(envIdOrName);
+        const sourceName = this.stateManager.getEnvironmentName(envIdOrName) || envIdOrName;
+        if (!sourceEnv) {
+          vscode.window.showErrorMessage(`Environment '${envIdOrName}' not found.`);
+          return;
+        }
+
+        const defaultNewName = `${sourceName} (Copy)`;
+        const newName = await vscode.window.showInputBox({
+          prompt: 'Enter name for cloned environment',
+          value: defaultNewName,
+          validateInput: (val) => {
+            if (!val || !val.trim()) return 'Environment name cannot be empty.';
+            if (this.stateManager.getEnvironment(val.trim())) return 'An environment with this name already exists.';
+            return undefined;
+          },
+        });
+
+        if (!newName || !newName.trim()) return;
+
+        const cloned = this.stateManager.cloneEnvironment(envIdOrName, newName.trim());
+        if (cloned) {
+          this.treeProvider.refresh();
+          vscode.window.showInformationMessage(`Cloned environment '${sourceName}' as '${cloned.name}'.`);
+        }
+      })
+    );
+
     // Create Collection
     s.push(
       vscode.commands.registerCommand('blueByrdApiClient.createCollection', async (treeItem?: BlueByrdTreeItem) => {
@@ -478,16 +773,174 @@ export class CommandManager {
       })
     );
 
-    // Duplicate Request
+    // Clone / Duplicate Request
+    const cloneRequestHandler = async (treeItem?: BlueByrdTreeItem | { id?: string; itemId?: string; name?: string } | string) => {
+      let reqId: string | undefined;
+
+      if (treeItem instanceof BlueByrdTreeItem) {
+        reqId = treeItem.itemId;
+      } else if (typeof treeItem === 'string') {
+        reqId = treeItem;
+      } else if (treeItem && typeof treeItem === 'object') {
+        reqId = (treeItem as any).itemId || (treeItem as any).id;
+      }
+
+      if (!reqId) {
+        const state = this.stateManager.getState();
+        const picks: Array<vscode.QuickPickItem & { reqId: string }> = [];
+        for (const col of state.collections) {
+          for (const req of col.requests) {
+            picks.push({
+              label: req.name,
+              description: `${req.method} ${req.url} (${col.name})`,
+              reqId: req.id,
+            });
+          }
+          for (const folder of col.folders) {
+            for (const req of folder.requests) {
+              picks.push({
+                label: req.name,
+                description: `${req.method} ${req.url} (${col.name} / ${folder.name})`,
+                reqId: req.id,
+              });
+            }
+          }
+        }
+        if (picks.length === 0) {
+          vscode.window.showWarningMessage('No requests found to clone.');
+          return;
+        }
+        const selected = await vscode.window.showQuickPick(picks, {
+          placeHolder: 'Select a request to clone',
+        });
+        if (!selected) return;
+        reqId = selected.reqId;
+      }
+
+      const found = this.stateManager.getRequest(reqId);
+      if (!found) {
+        vscode.window.showErrorMessage(`Request not found.`);
+        return;
+      }
+
+      const defaultName = `${found.request.name} (Copy)`;
+      const newName = await vscode.window.showInputBox({
+        prompt: 'Enter name for cloned request',
+        value: defaultName,
+        validateInput: (val) => {
+          if (!val || !val.trim()) return 'Request name cannot be empty.';
+          return undefined;
+        },
+      });
+
+      if (!newName || !newName.trim()) return;
+
+      const cloned = this.stateManager.cloneRequest(reqId, newName.trim());
+      if (cloned) {
+        this.treeProvider.refresh();
+        vscode.window.showInformationMessage(`Cloned request '${found.request.name}' as '${cloned.name}'.`);
+      }
+    };
+
     s.push(
-      vscode.commands.registerCommand('blueByrdApiClient.duplicateRequest', (treeItem?: BlueByrdTreeItem) => {
+      vscode.commands.registerCommand('blueByrdApiClient.cloneRequest', cloneRequestHandler),
+      vscode.commands.registerCommand('blueByrdApiClient.duplicateRequest', cloneRequestHandler)
+    );
+
+    // Move Item Up (Reordering Collections, Folders, and Requests)
+    s.push(
+      vscode.commands.registerCommand('blueByrdApiClient.moveItemUp', (treeItem?: BlueByrdTreeItem) => {
+        if (!treeItem || !treeItem.itemId) return;
+        const moved = this.stateManager.moveItemUp(treeItem.kind, treeItem.itemId, treeItem.parentId);
+        if (moved) {
+          this.treeProvider.refresh();
+        }
+      })
+    );
+
+    // Move Item Down (Reordering Collections, Folders, and Requests)
+    s.push(
+      vscode.commands.registerCommand('blueByrdApiClient.moveItemDown', (treeItem?: BlueByrdTreeItem) => {
+        if (!treeItem || !treeItem.itemId) return;
+        const moved = this.stateManager.moveItemDown(treeItem.kind, treeItem.itemId, treeItem.parentId);
+        if (moved) {
+          this.treeProvider.refresh();
+        }
+      })
+    );
+
+    // Move Request To (QuickPick selector for moving requests across folders and collections)
+    s.push(
+      vscode.commands.registerCommand('blueByrdApiClient.moveRequestTo', async (treeItem?: BlueByrdTreeItem) => {
         const reqId = treeItem?.itemId;
         if (!reqId) return;
 
-        const duplicated = this.stateManager.duplicateRequest(reqId);
-        if (duplicated) {
+        const state = this.stateManager.getState();
+        const current = this.stateManager.getRequest(reqId);
+        if (!current) return;
+
+        const picks: Array<vscode.QuickPickItem & { collectionId: string; folderId?: string }> = [];
+
+        for (const col of state.collections) {
+          picks.push({
+            label: `$(repo) ${col.name} (Root)`,
+            description: `Move directly under ${col.name}`,
+            collectionId: col.id,
+            folderId: undefined,
+          });
+          for (const folder of col.folders) {
+            picks.push({
+              label: `$(folder) ${col.name} / ${folder.name}`,
+              description: `Move into folder '${folder.name}'`,
+              collectionId: col.id,
+              folderId: folder.id,
+            });
+          }
+        }
+
+        const selected = await vscode.window.showQuickPick(picks, {
+          placeHolder: `Move '${current.request.name}' to collection or folder`,
+        });
+
+        if (!selected) return;
+
+        const moved = this.stateManager.moveRequest(reqId, selected.collectionId, selected.folderId);
+        if (moved) {
           this.treeProvider.refresh();
-          vscode.window.showInformationMessage(`Duplicated request as '${duplicated.name}'.`);
+          vscode.window.showInformationMessage(
+            `Moved '${current.request.name}' to ${selected.label.replace(/^\$\([^)]+\)\s*/, '')}.`
+          );
+        }
+      })
+    );
+
+    // Move Folder To (QuickPick selector for moving folders across collections)
+    s.push(
+      vscode.commands.registerCommand('blueByrdApiClient.moveFolderTo', async (treeItem?: BlueByrdTreeItem) => {
+        const folderId = treeItem?.itemId;
+        if (!folderId) return;
+
+        const state = this.stateManager.getState();
+        const picks = state.collections.map((c) => ({
+          label: `$(repo) ${c.name}`,
+          description: `Move folder '${treeItem.label}' into ${c.name}`,
+          collectionId: c.id,
+        }));
+
+        if (picks.length === 0) return;
+
+        const selected = await vscode.window.showQuickPick(picks, {
+          placeHolder: `Move folder '${treeItem.label}' to collection`,
+        });
+
+        if (!selected) return;
+
+        const moved = this.stateManager.moveFolderToCollection(folderId, selected.collectionId);
+        if (moved) {
+          this.treeProvider.refresh();
+          vscode.window.showInformationMessage(
+            `Moved folder '${treeItem.label}' to ${selected.label.replace(/^\$\([^)]+\)\s*/, '')}.`
+          );
         }
       })
     );

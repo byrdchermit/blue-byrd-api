@@ -518,6 +518,42 @@ export class BlueByrdStateManager {
     return false;
   }
 
+  public cloneEnvironment(nameOrId: string, newName?: string): { name: string; env: EnvironmentConfig } | undefined {
+    const state = this.getState();
+    const sourceEnv = this.getEnvironment(nameOrId);
+    const sourceName = this.getEnvironmentName(nameOrId) || nameOrId;
+    if (!sourceEnv) return undefined;
+
+    let targetName: string;
+    if (newName && newName.trim()) {
+      targetName = newName.trim();
+    } else {
+      targetName = `${sourceName} (Copy)`;
+      let counter = 1;
+      while (state.environments[targetName]) {
+        counter++;
+        targetName = `${sourceName} (Copy ${counter})`;
+      }
+    }
+
+    const slug = targetName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'env';
+    const clonedEnv: EnvironmentConfig = {
+      id: this.generateId(`env-${slug}`),
+      baseUrl: sourceEnv.baseUrl,
+      apiKey: sourceEnv.apiKey,
+      auth: sourceEnv.auth ? JSON.parse(JSON.stringify(sourceEnv.auth)) : undefined,
+      variables: sourceEnv.variables ? { ...sourceEnv.variables } : {},
+      headers: sourceEnv.headers ? { ...sourceEnv.headers } : {},
+      inheritsFrom: sourceEnv.inheritsFrom,
+      notes: sourceEnv.notes,
+      profileId: sourceEnv.profileId,
+    };
+
+    state.environments[targetName] = clonedEnv;
+    this.save(state);
+    return { name: targetName, env: clonedEnv };
+  }
+
   // --- Collections & Folders ---
   public getCollections(): Collection[] {
     return this.getState().collections;
@@ -591,6 +627,280 @@ export class BlueByrdStateManager {
     if (col.folders.length !== initialLen) {
       this.save(state);
       return true;
+    }
+    return false;
+  }
+
+  // --- Reordering & Drag-and-Drop Management ---
+  public reorderCollection(
+    sourceIdOrName: string,
+    targetIdOrName: string,
+    position: 'before' | 'after' = 'before'
+  ): boolean {
+    const state = this.getState();
+    const sourceIdx = state.collections.findIndex((c) => c.id === sourceIdOrName || c.name === sourceIdOrName);
+    const targetIdx = state.collections.findIndex((c) => c.id === targetIdOrName || c.name === targetIdOrName);
+    if (sourceIdx < 0 || targetIdx < 0 || sourceIdx === targetIdx) return false;
+
+    const [movedCol] = state.collections.splice(sourceIdx, 1);
+    let newTargetIdx = state.collections.findIndex((c) => c.id === targetIdOrName || c.name === targetIdOrName);
+    if (newTargetIdx < 0) return false;
+    if (position === 'after') {
+      newTargetIdx++;
+    }
+    state.collections.splice(newTargetIdx, 0, movedCol);
+    this.save(state);
+    return true;
+  }
+
+  public moveCollectionToEnd(sourceIdOrName: string): boolean {
+    const state = this.getState();
+    const sourceIdx = state.collections.findIndex((c) => c.id === sourceIdOrName || c.name === sourceIdOrName);
+    if (sourceIdx < 0 || sourceIdx === state.collections.length - 1) return false;
+
+    const [movedCol] = state.collections.splice(sourceIdx, 1);
+    state.collections.push(movedCol);
+    this.save(state);
+    return true;
+  }
+
+  public reorderFolder(
+    collectionIdOrName: string,
+    sourceFolderIdOrName: string,
+    targetFolderIdOrName: string,
+    position: 'before' | 'after' = 'before'
+  ): boolean {
+    const state = this.getState();
+    const col = state.collections.find((c) => c.id === collectionIdOrName || c.name === collectionIdOrName);
+    if (!col) return false;
+
+    const sourceIdx = col.folders.findIndex((f) => f.id === sourceFolderIdOrName || f.name === sourceFolderIdOrName);
+    const targetIdx = col.folders.findIndex((f) => f.id === targetFolderIdOrName || f.name === targetFolderIdOrName);
+    if (sourceIdx < 0 || targetIdx < 0 || sourceIdx === targetIdx) return false;
+
+    const [movedFolder] = col.folders.splice(sourceIdx, 1);
+    let newTargetIdx = col.folders.findIndex((f) => f.id === targetFolderIdOrName || f.name === targetFolderIdOrName);
+    if (newTargetIdx < 0) return false;
+    if (position === 'after') {
+      newTargetIdx++;
+    }
+    col.folders.splice(newTargetIdx, 0, movedFolder);
+    this.save(state);
+    return true;
+  }
+
+  public moveFolderToCollection(
+    sourceFolderIdOrName: string,
+    targetCollectionIdOrName: string,
+    targetFolderIdOrName?: string,
+    position: 'before' | 'after' = 'after'
+  ): boolean {
+    const state = this.getState();
+    let sourceCol: Collection | undefined;
+    let folderIdx = -1;
+
+    for (const c of state.collections) {
+      const idx = c.folders.findIndex((f) => f.id === sourceFolderIdOrName || f.name === sourceFolderIdOrName);
+      if (idx >= 0) {
+        sourceCol = c;
+        folderIdx = idx;
+        break;
+      }
+    }
+    if (!sourceCol || folderIdx < 0) return false;
+
+    const targetCol = state.collections.find((c) => c.id === targetCollectionIdOrName || c.name === targetCollectionIdOrName);
+    if (!targetCol) return false;
+
+    if (sourceCol.id === targetCol.id && targetFolderIdOrName) {
+      return this.reorderFolder(sourceCol.id, sourceFolderIdOrName, targetFolderIdOrName, position === 'after' ? 'after' : 'before');
+    }
+
+    const [movedFolder] = sourceCol.folders.splice(folderIdx, 1);
+
+    // Update child requests' collection reference
+    movedFolder.requests.forEach((r) => {
+      r.collection = targetCol.name;
+      r.collectionId = targetCol.id;
+      r.folder = movedFolder.name;
+      r.folderId = movedFolder.id;
+    });
+
+    if (targetFolderIdOrName) {
+      const targetIdx = targetCol.folders.findIndex((f) => f.id === targetFolderIdOrName || f.name === targetFolderIdOrName);
+      if (targetIdx >= 0) {
+        const insertIdx = position === 'after' ? targetIdx + 1 : targetIdx;
+        targetCol.folders.splice(insertIdx, 0, movedFolder);
+      } else {
+        targetCol.folders.push(movedFolder);
+      }
+    } else {
+      targetCol.folders.push(movedFolder);
+    }
+
+    this.save(state);
+    return true;
+  }
+
+  public moveRequest(
+    requestId: string,
+    targetCollectionIdOrName: string,
+    targetFolderIdOrName?: string,
+    targetRequestId?: string,
+    position: 'before' | 'after' = 'before'
+  ): boolean {
+    const state = this.getState();
+    let foundReq: RequestItem | undefined;
+
+    // 1. Find and remove request from current location
+    for (const col of state.collections) {
+      const rootIdx = col.requests.findIndex((r) => r.id === requestId);
+      if (rootIdx >= 0) {
+        [foundReq] = col.requests.splice(rootIdx, 1);
+        break;
+      }
+      for (const folder of col.folders) {
+        const fIdx = folder.requests.findIndex((r) => r.id === requestId);
+        if (fIdx >= 0) {
+          [foundReq] = folder.requests.splice(fIdx, 1);
+          break;
+        }
+      }
+      if (foundReq) break;
+    }
+
+    if (!foundReq) return false;
+
+    // 2. Locate target collection
+    const targetCol = state.collections.find((c) => c.id === targetCollectionIdOrName || c.name === targetCollectionIdOrName);
+    if (!targetCol) return false;
+
+    foundReq.collection = targetCol.name;
+    foundReq.collectionId = targetCol.id;
+
+    // 3. Insert into target folder or collection root
+    if (targetFolderIdOrName && targetFolderIdOrName !== 'Root') {
+      const targetFolder = targetCol.folders.find((f) => f.id === targetFolderIdOrName || f.name === targetFolderIdOrName);
+      if (!targetFolder) return false;
+
+      foundReq.folder = targetFolder.name;
+      foundReq.folderId = targetFolder.id;
+
+      if (targetRequestId && targetRequestId !== requestId) {
+        const targetIdx = targetFolder.requests.findIndex((r) => r.id === targetRequestId);
+        if (targetIdx >= 0) {
+          const insertIdx = position === 'after' ? targetIdx + 1 : targetIdx;
+          targetFolder.requests.splice(insertIdx, 0, foundReq);
+        } else {
+          targetFolder.requests.push(foundReq);
+        }
+      } else {
+        targetFolder.requests.push(foundReq);
+      }
+    } else {
+      // Root of collection
+      foundReq.folder = undefined;
+      foundReq.folderId = undefined;
+
+      if (targetRequestId && targetRequestId !== requestId) {
+        const targetIdx = targetCol.requests.findIndex((r) => r.id === targetRequestId);
+        if (targetIdx >= 0) {
+          const insertIdx = position === 'after' ? targetIdx + 1 : targetIdx;
+          targetCol.requests.splice(insertIdx, 0, foundReq);
+        } else {
+          targetCol.requests.push(foundReq);
+        }
+      } else {
+        targetCol.requests.push(foundReq);
+      }
+    }
+
+    this.save(state);
+    return true;
+  }
+
+  public moveItemUp(kind: SidebarNodeKind, itemId: string, parentId?: string): boolean {
+    const state = this.getState();
+    if (kind === 'collection') {
+      const idx = state.collections.findIndex((c) => c.id === itemId);
+      if (idx > 0) {
+        const [col] = state.collections.splice(idx, 1);
+        state.collections.splice(idx - 1, 0, col);
+        this.save(state);
+        return true;
+      }
+    } else if (kind === 'folder') {
+      for (const col of state.collections) {
+        const idx = col.folders.findIndex((f) => f.id === itemId);
+        if (idx > 0) {
+          const [f] = col.folders.splice(idx, 1);
+          col.folders.splice(idx - 1, 0, f);
+          this.save(state);
+          return true;
+        }
+      }
+    } else if (kind === 'request') {
+      for (const col of state.collections) {
+        const rootIdx = col.requests.findIndex((r) => r.id === itemId);
+        if (rootIdx > 0) {
+          const [r] = col.requests.splice(rootIdx, 1);
+          col.requests.splice(rootIdx - 1, 0, r);
+          this.save(state);
+          return true;
+        }
+        for (const folder of col.folders) {
+          const fIdx = folder.requests.findIndex((r) => r.id === itemId);
+          if (fIdx > 0) {
+            const [r] = folder.requests.splice(fIdx, 1);
+            folder.requests.splice(fIdx - 1, 0, r);
+            this.save(state);
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  public moveItemDown(kind: SidebarNodeKind, itemId: string, parentId?: string): boolean {
+    const state = this.getState();
+    if (kind === 'collection') {
+      const idx = state.collections.findIndex((c) => c.id === itemId);
+      if (idx >= 0 && idx < state.collections.length - 1) {
+        const [col] = state.collections.splice(idx, 1);
+        state.collections.splice(idx + 1, 0, col);
+        this.save(state);
+        return true;
+      }
+    } else if (kind === 'folder') {
+      for (const col of state.collections) {
+        const idx = col.folders.findIndex((f) => f.id === itemId);
+        if (idx >= 0 && idx < col.folders.length - 1) {
+          const [f] = col.folders.splice(idx, 1);
+          col.folders.splice(idx + 1, 0, f);
+          this.save(state);
+          return true;
+        }
+      }
+    } else if (kind === 'request') {
+      for (const col of state.collections) {
+        const rootIdx = col.requests.findIndex((r) => r.id === itemId);
+        if (rootIdx >= 0 && rootIdx < col.requests.length - 1) {
+          const [r] = col.requests.splice(rootIdx, 1);
+          col.requests.splice(rootIdx + 1, 0, r);
+          this.save(state);
+          return true;
+        }
+        for (const folder of col.folders) {
+          const fIdx = folder.requests.findIndex((r) => r.id === itemId);
+          if (fIdx >= 0 && fIdx < folder.requests.length - 1) {
+            const [r] = folder.requests.splice(fIdx, 1);
+            folder.requests.splice(fIdx + 1, 0, r);
+            this.save(state);
+            return true;
+          }
+        }
+      }
     }
     return false;
   }
@@ -711,17 +1021,36 @@ export class BlueByrdStateManager {
     return deleted;
   }
 
-  public duplicateRequest(requestId: string): RequestItem | undefined {
+  public cloneRequest(
+    requestId: string,
+    newName?: string,
+    targetCollectionId?: string,
+    targetFolderId?: string
+  ): RequestItem | undefined {
     const found = this.getRequest(requestId);
     if (!found) return undefined;
 
+    let targetName: string;
+    if (newName && newName.trim()) {
+      targetName = newName.trim();
+    } else {
+      targetName = `${found.request.name} (Copy)`;
+    }
+
     const copy: RequestItem = {
-      ...found.request,
+      ...JSON.parse(JSON.stringify(found.request)),
       id: this.generateId('req'),
-      name: `${found.request.name} (Copy)`,
+      name: targetName,
     };
 
-    return this.saveRequest(copy, found.collection.id, found.folder?.id);
+    const colId = targetCollectionId || found.collection.id;
+    const fId = targetFolderId !== undefined ? targetFolderId : found.folder?.id;
+
+    return this.saveRequest(copy, colId, fId);
+  }
+
+  public duplicateRequest(requestId: string): RequestItem | undefined {
+    return this.cloneRequest(requestId);
   }
 
   // --- History Isolated from Collections ---

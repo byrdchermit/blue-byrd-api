@@ -1,11 +1,14 @@
 import { AuthSettings, ProfileAuth } from '../types';
 import { BlueByrdStateManager } from '../state/stateManager';
+import { TokenService } from './tokenService';
 
 export class AuthService {
   private readonly stateManager: BlueByrdStateManager;
+  private readonly tokenService?: TokenService;
 
-  constructor(stateManager: BlueByrdStateManager) {
+  constructor(stateManager: BlueByrdStateManager, tokenService?: TokenService) {
     this.stateManager = stateManager;
+    this.tokenService = tokenService;
   }
 
   /**
@@ -21,13 +24,30 @@ export class AuthService {
   ): Record<string, string> {
     const merged = { ...existingHeaders };
 
+    // Retrieve hierarchy sources first so applyAuth has profile & environment context
+    const profile = this.stateManager.getProfile(profileNameOrId);
+    const environment = this.stateManager.getEnvironment(environmentNameOrId);
+    const collection = this.stateManager.getCollection(collectionNameOrId);
+    const folder = collection && folderNameOrId
+      ? collection.folders.find((f) => f.id === folderNameOrId || f.name === folderNameOrId)
+      : undefined;
+
     const applyAuth = (auth?: ProfileAuth) => {
       if (!auth || auth.type === 'none') {
         return;
       }
 
       if (auth.type === 'bearer' || auth.type === 'oauth2') {
-        const tokenValue = auth.token?.trim() ?? '';
+        let tokenValue = auth.token?.trim() ?? '';
+        if (!tokenValue && auth.type === 'oauth2' && this.tokenService) {
+          const stored = this.tokenService.getValidTokenSync(
+            profile?.id || profileNameOrId || 'global',
+            environment?.id || environmentNameOrId
+          );
+          if (stored) {
+            tokenValue = stored.accessToken;
+          }
+        }
         if (!tokenValue) return;
         const header = auth.headerName?.trim() || 'Authorization';
         const prefix = auth.headerPrefix !== undefined && auth.headerPrefix !== '' ? auth.headerPrefix.trim() : 'Bearer';
@@ -47,14 +67,6 @@ export class AuthService {
         }
       }
     };
-
-    // Retrieve hierarchy sources
-    const profile = this.stateManager.getProfile(profileNameOrId);
-    const environment = this.stateManager.getEnvironment(environmentNameOrId);
-    const collection = this.stateManager.getCollection(collectionNameOrId);
-    const folder = collection && folderNameOrId
-      ? collection.folders.find((f) => f.id === folderNameOrId || f.name === folderNameOrId)
-      : undefined;
 
     // Check request-level override
     if (requestAuth?.auth && requestAuth.auth.type !== 'none') {

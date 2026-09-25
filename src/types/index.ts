@@ -1,6 +1,32 @@
 import * as vscode from 'vscode';
 
-export type SidebarNodeKind = 'section' | 'active-filter' | 'profile' | 'environment' | 'collection' | 'folder' | 'request' | 'history';
+export type SidebarNodeKind =
+  | 'section'
+  | 'active-filter'
+  | 'profile'
+  | 'environment'
+  | 'collection'
+  | 'folder'
+  | 'request'
+  | 'history'
+  | 'token'
+  | 'noTokens';
+
+export interface StoredToken {
+  id: string;
+  profileId: string;
+  envName?: string;
+  envId?: string;
+  tokenName?: string;
+  tier?: string;
+  accessToken: string;
+  tokenType?: string;
+  refreshToken?: string;
+  expiresAt: number;
+  createdAt: number;
+  scopes?: string[];
+  configHash?: string;
+}
 
 export type RequestContext = {
   id?: string;
@@ -23,6 +49,8 @@ export type RequestContext = {
   auth?: AuthSettings;
   notes?: string;
   variables?: VariableItem[];
+  preRequestScript?: string;
+  postResponseScript?: string;
 };
 
 export type BodyType = 'none' | 'json' | 'form-urlencoded' | 'form-data' | 'text' | 'xml' | 'raw';
@@ -84,6 +112,20 @@ export type RequestItem = {
   auth?: AuthSettings;
   notes?: string;
   variables?: VariableItem[];
+  preRequestScript?: string;
+  postResponseScript?: string;
+};
+
+export type TestResultItem = {
+  name: string;
+  passed: boolean;
+  error?: string;
+};
+
+export type ScriptConsoleLog = {
+  level: 'log' | 'info' | 'warn' | 'error';
+  message: string;
+  timestamp: number;
 };
 
 export type CollectionFolder = {
@@ -118,6 +160,8 @@ export type ResponseMetadata = {
   sizeBytes?: number;
   headers: Record<string, string>;
   body: string;
+  testResults?: TestResultItem[];
+  consoleLogs?: ScriptConsoleLog[];
 };
 
 export type RecentRequest = RequestItem & {
@@ -130,6 +174,8 @@ export type RecentRequest = RequestItem & {
   responseHeaders?: Record<string, string>;
   responseBody?: string;
   responseOk?: boolean;
+  testResults?: TestResultItem[];
+  consoleLogs?: ScriptConsoleLog[];
 };
 
 export type Profile = {

@@ -1,6 +1,14 @@
 import * as vscode from 'vscode';
 import { RequestContext, RequestItem, SidebarNodeKind } from '../../types';
 
+const METHOD_COLORS: Record<string, string> = {
+  GET: 'charts.blue',
+  POST: 'charts.green',
+  PUT: 'charts.orange',
+  PATCH: 'charts.orange',
+  DELETE: 'charts.red',
+};
+
 export class BlueByrdTreeItem extends vscode.TreeItem {
   constructor(
     public readonly label: string,
@@ -89,22 +97,29 @@ export class BlueByrdTreeItem extends vscode.TreeItem {
       if (customDescription === undefined) {
         this.description = `${count} ${count === 1 ? 'request' : 'requests'}`;
       }
-      this.tooltip = `Folder: ${label}`;
     } else if (kind === 'request') {
-      const method = requestContext?.method || 'GET';
-      this.iconPath = new vscode.ThemeIcon('symbol-method');
+      const method = (requestContext?.method || 'GET').toUpperCase();
+      const color = METHOD_COLORS[method] || 'charts.foreground';
+      this.iconPath = new vscode.ThemeIcon('arrow-right', new vscode.ThemeColor(color));
       if (customDescription === undefined) {
         this.description = method;
       }
       this.tooltip = `${method} ${requestContext?.url || label}`;
     } else if (kind === 'history') {
-      const method = requestContext?.method || 'GET';
-      this.iconPath = new vscode.ThemeIcon('clock');
+      const method = (requestContext?.method || 'GET').toUpperCase();
+      const color = METHOD_COLORS[method] || 'charts.foreground';
+      this.iconPath = new vscode.ThemeIcon('arrow-right', new vscode.ThemeColor(color));
       if (customDescription === undefined) {
         this.description = method;
       }
       this.tooltip = `${method} ${requestContext?.url || label}`;
       this.contextValue = 'bluebyrd.historyItem';
+    } else if (kind === 'token') {
+      this.iconPath = new vscode.ThemeIcon('key');
+      this.contextValue = 'bluebyrd.token';
+    } else if (kind === 'noTokens') {
+      this.iconPath = new vscode.ThemeIcon('info');
+      this.contextValue = 'bluebyrd.noTokens';
     }
   }
 }
