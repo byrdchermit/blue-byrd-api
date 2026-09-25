@@ -1,9 +1,10 @@
 import * as vscode from 'vscode';
-import { RequestContext, RequestItem } from '../../types';
+import { RequestContext, RequestItem, StoredToken } from '../../types';
 import { BlueByrdStateManager } from '../../state/stateManager';
 import { HttpService } from '../../services/httpService';
 import { VariableService } from '../../services/variableService';
 import { AuthService } from '../../services/authService';
+import { TokenService } from '../../services/tokenService';
 import { getRequestPanelHtml } from './requestPanelHtml';
 
 export class BlueByrdPanel {
@@ -17,6 +18,7 @@ export class BlueByrdPanel {
   private readonly httpService: HttpService;
   private readonly variableService: VariableService;
   private readonly authService: AuthService;
+  private readonly tokenService?: TokenService;
   private readonly panelKey: string;
   private disposables: vscode.Disposable[] = [];
 
@@ -26,7 +28,8 @@ export class BlueByrdPanel {
     stateManager: BlueByrdStateManager,
     httpService: HttpService,
     variableService: VariableService,
-    authService: AuthService
+    authService: AuthService,
+    tokenService?: TokenService
   ): void {
     const column = vscode.window.activeTextEditor
       ? vscode.window.activeTextEditor.viewColumn
@@ -64,7 +67,8 @@ export class BlueByrdPanel {
       httpService,
       variableService,
       authService,
-      panelKey
+      panelKey,
+      tokenService
     );
 
     this.panels.set(panelKey, instance);
@@ -90,6 +94,24 @@ export class BlueByrdPanel {
     });
   }
 
+  /**
+   * Notify matching open panels when a request is renamed.
+   */
+  public static notifyRequestRenamed(requestId: string, newName: string): void {
+    this.panels.forEach((p) => {
+      const id = p.initialContext?.requestId || p.initialContext?.id || p.panelKey;
+      if (id === requestId) {
+        p.panel.title = newName;
+        if (p.initialContext) {
+          p.initialContext.requestName = newName;
+        }
+        p.panel.webview.postMessage({ type: 'requestRenamed', requestId, name: newName });
+      }
+    });
+  }
+
+  private readonly initialContext: RequestContext;
+
   private constructor(
     panel: vscode.WebviewPanel,
     extensionUri: vscode.Uri,
@@ -98,15 +120,18 @@ export class BlueByrdPanel {
     httpService: HttpService,
     variableService: VariableService,
     authService: AuthService,
-    panelKey: string
+    panelKey: string,
+    tokenService?: TokenService
   ) {
     this.panel = panel;
     this.extensionUri = extensionUri;
+    this.initialContext = initialContext;
     this.stateManager = stateManager;
     this.httpService = httpService;
     this.variableService = variableService;
     this.authService = authService;
     this.panelKey = panelKey;
+    this.tokenService = tokenService;
 
     // Pre-calculate initial inherited variables and headers for inspector
     const state = this.stateManager.getState();
@@ -132,12 +157,19 @@ export class BlueByrdPanel {
       initialHeaders
     );
 
+    const availableTokens = this.tokenService
+      ? this.tokenService.getAllTokens().filter(
+          (t) => t.profileId === initialProfile || t.profileId === 'global'
+        )
+      : [];
+
     // Set HTML content
     this.panel.webview.html = getRequestPanelHtml(
       initialContext,
       state,
       varDetails.inherited,
-      headerDetails.inherited
+      headerDetails.inherited,
+      availableTokens
     );
 
     // Listen for disposal
@@ -165,7 +197,7 @@ export class BlueByrdPanel {
             const meta = await this.httpService.executeRequest(payload);
             this.panel.webview.postMessage({ type: 'requestResult', meta });
             // Refresh explorer so history node updates
-            vscode.commands.executeCommand('blueByrdApiClient.refreshExplorer');
+            vscode.commands.executeCommand('byrdsnestApiClient.refreshExplorer');
           } else if (message.type === 'saveRequest') {
             const payload = message.payload;
             const savedItem: RequestItem = {
@@ -190,12 +222,35 @@ export class BlueByrdPanel {
 
             const saved = this.stateManager.saveRequest(savedItem, payload.collection, payload.folder);
 
-            // Update panel title
+            // Update panel title and internal context
             this.panel.title = saved.name;
-            this.panel.webview.postMessage({ type: 'saved', id: saved.id });
+            if (this.initialContext) {
+              this.initialContext.requestName = saved.name;
+              this.initialContext.id = saved.id;
+              this.initialContext.requestId = saved.id;
+            }
+            this.panel.webview.postMessage({ type: 'saved', id: saved.id, name: saved.name });
 
             vscode.window.showInformationMessage(`Request '${saved.name}' saved.`);
-            vscode.commands.executeCommand('blueByrdApiClient.refreshExplorer');
+            vscode.commands.executeCommand('byrdsnestApiClient.refreshExplorer');
+          } else if (message.type === 'renameRequest') {
+            const { requestId, newName } = message.payload || {};
+            if (newName && typeof newName === 'string' && newName.trim()) {
+              const trimmed = newName.trim();
+              this.panel.title = trimmed;
+              if (this.initialContext) {
+                this.initialContext.requestName = trimmed;
+              }
+              const targetId = requestId || this.initialContext?.requestId || this.initialContext?.id;
+              if (targetId) {
+                const renamed = this.stateManager.renameRequest(targetId, trimmed);
+                if (renamed) {
+                  vscode.commands.executeCommand('byrdsnestApiClient.refreshExplorer');
+                  vscode.window.showInformationMessage(`Request renamed to '${trimmed}'.`);
+                }
+              }
+              this.panel.webview.postMessage({ type: 'requestRenamed', requestId: targetId, name: trimmed });
+            }
           } else if (message.type === 'getInherited') {
             const payload = message.payload;
             const varDetails = this.variableService.resolveVariablesDetailed(
@@ -346,9 +401,39 @@ export class BlueByrdPanel {
                 filePath: uris[0].fsPath,
               });
             }
+          } else if (message.type === 'saveTokenToVault') {
+            if (this.tokenService && message.payload?.token) {
+              const activeProfileId = this.stateManager.getActiveProfileId() || 'global';
+              const profile = this.stateManager.getProfile(activeProfileId);
+              const envName = message.payload.envName || this.stateManager.getActiveEnvironmentName() || '';
+              const env = this.stateManager.getEnvironment(envName);
+              const newToken: StoredToken = {
+                id: `tok-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+                profileId: activeProfileId,
+                profileName: profile?.name || 'Default Profile',
+                envName: envName,
+                envId: env?.id,
+                tokenName: message.payload.name || `${envName || 'Stored'} Token`,
+                accessToken: message.payload.token,
+                tokenType: 'Bearer',
+                createdAt: Date.now(),
+                expiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000,
+                source: 'manual',
+                sourceUrl: message.payload.sourceUrl || (env?.baseUrl || ''),
+                clientId: message.payload.clientId,
+              };
+              await this.tokenService.saveToken(newToken);
+              vscode.window.showInformationMessage(`Token "${newToken.tokenName}" saved to vault.`);
+              const tokens = await this.tokenService.getTokens(activeProfileId);
+              this.panel.webview.postMessage({
+                type: 'tokensUpdated',
+                tokens,
+                selectedId: newToken.id,
+              });
+            }
           }
         } catch (err) {
-          console.error('[bluebyrd] Error handling webview message:', err);
+          console.error('[byrdsnest api client] Error handling webview message:', err);
           vscode.window.showErrorMessage(`Request panel error: ${err instanceof Error ? err.message : String(err)}`);
         }
       },

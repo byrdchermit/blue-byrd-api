@@ -10,6 +10,10 @@ export class TokenService {
   }
 
   private getKey(profileId: string): string {
+    return `byrdsnest.tokens.${profileId || 'global'}`;
+  }
+
+  private getLegacyKey(profileId: string): string {
     return `bluebyrd.tokens.${profileId || 'global'}`;
   }
 
@@ -18,7 +22,14 @@ export class TokenService {
       return this.memoryStore.get(profileId) || [];
     }
     try {
-      const raw = await this.secrets.get(this.getKey(profileId));
+      let raw = await this.secrets.get(this.getKey(profileId));
+      if (!raw) {
+        raw = await this.secrets.get(this.getLegacyKey(profileId));
+        if (raw) {
+          // Migrate legacy tokens to new key
+          await this.secrets.store(this.getKey(profileId), raw);
+        }
+      }
       if (!raw) {
         this.memoryStore.set(profileId, []);
         return [];
@@ -37,6 +48,28 @@ export class TokenService {
     if (this.secrets) {
       await this.secrets.store(this.getKey(profileId), JSON.stringify(tokens));
     }
+  }
+
+  public getAllTokens(): StoredToken[] {
+    const all: StoredToken[] = [];
+    for (const list of this.memoryStore.values()) {
+      all.push(...list);
+    }
+    return all;
+  }
+
+  public getTokenById(tokenId: string): StoredToken | undefined {
+    return this.getAllTokens().find((t) => t.id === tokenId);
+  }
+
+  public async loadAllTokens(profileIds: string[]): Promise<StoredToken[]> {
+    const all: StoredToken[] = [];
+    const uniqueIds = Array.from(new Set([...profileIds, 'global']));
+    for (const pid of uniqueIds) {
+      const toks = await this.getTokens(pid);
+      all.push(...toks);
+    }
+    return all;
   }
 
   public getValidTokenSync(profileId: string, envIdOrName?: string): StoredToken | undefined {

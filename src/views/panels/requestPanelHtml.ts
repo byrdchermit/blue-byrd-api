@@ -1,4 +1,4 @@
-import { AppState, InheritedHeaderInfo, InheritedVariableInfo, RequestContext } from '../../types';
+import { AppState, EnvironmentConfig, InheritedHeaderInfo, InheritedVariableInfo, RequestContext, StoredToken } from '../../types';
 import { renderAuthCss, renderAuthFieldsHtml, getSharedAuthClientScript } from './sharedAuthHtml';
 
 function escapeHtml(str: unknown): string {
@@ -15,7 +15,8 @@ export function getRequestPanelHtml(
   context: RequestContext,
   state: AppState,
   initialInheritedVars: InheritedVariableInfo[] = [],
-  initialInheritedHeaders: InheritedHeaderInfo[] = []
+  initialInheritedHeaders: InheritedHeaderInfo[] = [],
+  availableTokens: StoredToken[] = []
 ): string {
   const activeProfile = context.profileId || context.profile || (state.activeProfileId !== 'all' ? state.activeProfileId : undefined) || state.profiles[0]?.id;
   const profileOptions = state.profiles
@@ -27,18 +28,100 @@ export function getRequestPanelHtml(
     })
     .join('');
 
+  const envEntries = Object.entries(state.environments);
   const envKeys = Object.keys(state.environments);
   const activeEnv = context.environment || state.activeEnvironmentName || envKeys[0];
   const selectedEnvKey = envKeys.find(k => k === activeEnv || state.environments[k]?.id === activeEnv) || envKeys[0];
-  const environmentOptions = envKeys
-    .map(
-      (key) =>
-        `<option value="${escapeHtml(key)}" ${key === selectedEnvKey ? 'selected' : ''}>${escapeHtml(key)}</option>`
-    )
-    .join('');
+
+  // Lookup maps for inheritance resolution
+  const envById = new Map<string, { name: string; env: EnvironmentConfig }>();
+  const envByName = new Map<string, { name: string; env: EnvironmentConfig }>();
+  for (const [name, env] of envEntries) {
+    envByName.set(name, { name, env });
+    if (env.id) envById.set(env.id, { name, env });
+  }
+
+  // Build parent-to-children mapping & root entries
+  const childrenMap = new Map<string, Array<{ name: string; env: EnvironmentConfig }>>();
+  const rootEntries: Array<{ name: string; env: EnvironmentConfig }> = [];
+
+  for (const [name, env] of envEntries) {
+    const parentRef = env.inheritsFrom;
+    const parentEntry = parentRef ? (envById.get(parentRef) || envByName.get(parentRef)) : undefined;
+
+    if (parentEntry && parentEntry.name !== name) {
+      const key = parentEntry.env.id || parentEntry.name;
+      if (!childrenMap.has(key)) {
+        childrenMap.set(key, []);
+      }
+      childrenMap.get(key)!.push({ name, env });
+    } else {
+      rootEntries.push({ name, env });
+    }
+  }
+
+  const renderedEnvNames = new Set<string>();
+  const optionLines: string[] = [];
+
+  const renderEnvOption = (name: string, env: EnvironmentConfig, depth: number, visited: Set<string>) => {
+    const key = env.id || name;
+    if (visited.has(key)) return;
+    const nextVisited = new Set(visited).add(key);
+    renderedEnvNames.add(name);
+
+    const rawChildren = childrenMap.get(key) || [];
+    const validChildren = rawChildren.filter(c => !visited.has(c.env.id || c.name));
+    const hasChildren = validChildren.length > 0;
+
+    const parentEntry = env.inheritsFrom ? (envById.get(env.inheritsFrom) || envByName.get(env.inheritsFrom)) : undefined;
+    const parentDisplayName = parentEntry ? parentEntry.name : env.inheritsFrom;
+
+    let label = '';
+    if (depth > 0) {
+      const indent = '\u00A0\u00A0'.repeat(depth) + '↳ ';
+      label = `${indent}${name}`;
+      if (parentDisplayName) {
+        label += ` (inherits: ${parentDisplayName})`;
+      }
+      if (hasChildren) {
+        label += ` [Parent (${validChildren.length})]`;
+      }
+    } else {
+      label = name;
+      if (hasChildren) {
+        label += ` (Parent • ${validChildren.length} ${validChildren.length === 1 ? 'child' : 'children'})`;
+      } else if (parentDisplayName) {
+        label += ` (inherits: ${parentDisplayName})`;
+      }
+    }
+
+    const isSelected = name === selectedEnvKey;
+    optionLines.push(
+      `<option value="${escapeHtml(name)}" ${isSelected ? 'selected' : ''}>${escapeHtml(label)}</option>`
+    );
+
+    for (const child of validChildren) {
+      renderEnvOption(child.name, child.env, depth + 1, nextVisited);
+    }
+  };
+
+  for (const root of rootEntries) {
+    renderEnvOption(root.name, root.env, 0, new Set());
+  }
+
+  // Safety fallback for any environments not reachable from roots
+  for (const [name, env] of envEntries) {
+    if (!renderedEnvNames.has(name)) {
+      renderEnvOption(name, env, 0, new Set());
+    }
+  }
+
+  const environmentOptions = optionLines.join('');
 
   const collectionName = escapeHtml(context.collection || state.collections[0]?.name || 'Demo Collection');
   const displayFolder = escapeHtml(context.folder && context.folder !== 'Root' ? context.folder : 'Root');
+  const rawRequestName = context.requestName || (context as any).name || (context.url ? `${context.method || 'GET'} ${context.url}` : 'New Request');
+  const requestName = escapeHtml(rawRequestName);
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -46,7 +129,7 @@ export function getRequestPanelHtml(
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data: https:;" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>bluebyrd Request</title>
+  <title>${requestName || 'byrdsnest api client Request'}</title>
   <style>
     :root {
       --bg: var(--vscode-editor-background);
@@ -110,6 +193,72 @@ export function getRequestPanelHtml(
       font-weight: 500;
     }
     .crumb-separator { color: var(--muted); }
+    .crumb-request-wrapper {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1px 4px 1px 8px;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+    }
+    .crumb-request-wrapper:hover {
+      border-color: var(--primary);
+    }
+    .crumb-request-wrapper:focus-within {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 1px var(--primary);
+      background: var(--bg);
+    }
+    .crumb-request-icon {
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .crumb-request-input {
+      background: transparent;
+      border: none;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 2px 4px;
+      outline: none;
+      min-width: 140px;
+      max-width: 320px;
+    }
+    .crumb-request-input::placeholder {
+      color: var(--muted);
+      font-weight: normal;
+    }
+    .crumb-rename-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      padding: 3px;
+      border-radius: 3px;
+      transition: color 0.15s ease, background 0.15s ease;
+      flex-shrink: 0;
+    }
+    .crumb-rename-btn:hover {
+      color: var(--success);
+      background: rgba(78, 201, 176, 0.15);
+    }
+    .crumb-rename-btn.saved-flash {
+      color: var(--success);
+      animation: pulse-saved 0.6s ease;
+    }
+    @keyframes pulse-saved {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.3); color: #4ec9b0; }
+      100% { transform: scale(1); }
+    }
 
     .selectors {
       display: flex;
@@ -423,6 +572,22 @@ export function getRequestPanelHtml(
       padding: 2px 8px;
       height: 24px;
       cursor: pointer;
+    }
+    .btn-toggle-dynamic {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 500;
+      cursor: pointer;
+      padding: 1px 7px;
+      border-radius: 3px;
+      transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+    }
+    .btn-toggle-dynamic:hover {
+      color: var(--text);
+      border-color: var(--primary);
+      background: var(--bg);
     }
 
     /* Collapsible source groups in inherited vars/headers */
@@ -794,9 +959,32 @@ export function getRequestPanelHtml(
     <!-- Top Context Bar -->
     <div class="context-bar">
       <div class="breadcrumbs">
-        <span class="crumb-pill" id="crumb-col">${collectionName}</span>
+        <span class="crumb-pill" id="crumb-col" title="Collection">${collectionName}</span>
         <span class="crumb-separator">›</span>
-        <span class="crumb-pill" id="crumb-folder">${displayFolder}</span>
+        <span class="crumb-pill" id="crumb-folder" title="Folder">${displayFolder}</span>
+        <span class="crumb-separator">›</span>
+        <div class="crumb-request-wrapper" title="Request Name (click to edit, Enter to rename)">
+          <span class="crumb-request-icon" title="Request">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M13.23 1h-1.46L3.52 9.25l-.16.32L2.01 13.9a.5.5 0 0 0 .61.61l4.33-1.35.32-.16L15.5 4.77v-1.46L13.23 1zM4.2 10.02L11.5 2.72l1.78 1.78-7.3 7.3-2.3.72.72-2.3z"/>
+            </svg>
+          </span>
+          <input
+            type="text"
+            id="req-name-input"
+            class="crumb-request-input"
+            value="${requestName}"
+            placeholder="Request Name"
+            spellcheck="false"
+            autocomplete="off"
+            title="Click to rename request (Enter to save)"
+          />
+          <button id="btn-rename-req" class="crumb-rename-btn" type="button" title="Save Request Name">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0z"/>
+            </svg>
+          </button>
+        </div>
       </div>
       <div class="selectors">
         <div class="selector-group">
@@ -875,7 +1063,10 @@ export function getRequestPanelHtml(
               <span class="inherited-title">
                 Inherited Variables
               </span>
-              <span class="meta-tag" id="inherited-vars-count">0 available</span>
+              <div style="display:inline-flex; align-items:center; gap:6px;">
+                <button id="btn-toggle-dynamic-vars" class="btn-toggle-dynamic" type="button" style="display:none;" title="Toggle built-in dynamic variables ($uuid, $timestamp, etc.)">Show Built-in Dynamic</button>
+                <span class="meta-tag" id="inherited-vars-count">0 available</span>
+              </div>
             </div>
             <div id="inherited-var-rows" class="inherited-table"></div>
           </div>
@@ -1018,7 +1209,7 @@ export function getRequestPanelHtml(
               <span class="help-hint">When set to No Inheritance, the credentials configured below will be sent with this request.</span>
             </div>
 
-            ${renderAuthFieldsHtml(context.auth?.auth, 'this request')}
+            ${renderAuthFieldsHtml(context.auth?.auth, 'this request', availableTokens)}
           </div>
         </div>
 
@@ -1431,14 +1622,28 @@ export function getRequestPanelHtml(
       return group;
     }
 
+    let showDynamicVars = false;
+
     // --- Inherited Variables Inspector (grouped) ---
     function renderInheritedVars() {
       if (!inheritedVarsContainer) return;
       inheritedVarsContainer.innerHTML = '';
 
-      if (!currentInheritedVars || currentInheritedVars.length === 0) {
+      const userVars = (currentInheritedVars || []).filter(item => item.source !== 'dynamic');
+      const dynamicVars = (currentInheritedVars || []).filter(item => item.source === 'dynamic');
+
+      if (inheritedVarsCount) {
+        inheritedVarsCount.textContent = userVars.length + ' available';
+      }
+
+      const btnToggleDynamic = document.getElementById('btn-toggle-dynamic-vars');
+      if (btnToggleDynamic) {
+        btnToggleDynamic.style.display = dynamicVars.length > 0 ? 'inline-flex' : 'none';
+        btnToggleDynamic.textContent = showDynamicVars ? 'Hide Built-in Dynamic' : ('Show Built-in Dynamic (' + dynamicVars.length + ')');
+      }
+
+      if (userVars.length === 0 && (!showDynamicVars || dynamicVars.length === 0)) {
         inheritedVarsContainer.innerHTML = '<div style="font-size: 11px; color: var(--muted); padding: 8px 4px;">No inherited variables for this context.</div>';
-        if (inheritedVarsCount) inheritedVarsCount.textContent = '0 available';
         return;
       }
 
@@ -1448,11 +1653,10 @@ export function getRequestPanelHtml(
         return en && k ? k : null;
       }).filter(Boolean);
 
-      if (inheritedVarsCount) inheritedVarsCount.textContent = currentInheritedVars.length + ' available';
-
-      // Group items by source key (preserves order of first appearance)
+      // Group items by source key
+      const varsToRender = showDynamicVars ? currentInheritedVars : userVars;
       const groups = new Map(); // groupId → { source, sourceName, items[] }
-      currentInheritedVars.forEach(item => {
+      varsToRender.forEach(item => {
         const groupId = item.source + '::' + item.sourceName;
         if (!groups.has(groupId)) groups.set(groupId, { source: item.source, sourceName: item.sourceName, items: [] });
         groups.get(groupId).items.push(item);
@@ -1553,6 +1757,63 @@ export function getRequestPanelHtml(
     const selectProfileEl = document.getElementById('select-profile');
     if (selectProfileEl) {
       selectProfileEl.addEventListener('change', () => requestInheritedData());
+    }
+
+    // Wire Request Name inline renaming
+    const reqNameInput = document.getElementById('req-name-input');
+    const btnRename = document.getElementById('btn-rename-req');
+    let lastSavedName = reqNameInput ? reqNameInput.value.trim() : '';
+
+    function autoResizeInput(input) {
+      if (!input) return;
+      const len = Math.max(input.value.length || 0, (input.placeholder || '').length || 10);
+      input.style.width = Math.min(Math.max(len + 2, 14), 45) + 'ch';
+    }
+
+    function triggerRename() {
+      if (!reqNameInput) return;
+      const newName = reqNameInput.value.trim();
+      if (!newName || newName === lastSavedName) return;
+      lastSavedName = newName;
+
+      if (btnRename) {
+        btnRename.classList.add('saved-flash');
+        setTimeout(() => btnRename.classList.remove('saved-flash'), 800);
+      }
+
+      vscode.postMessage({
+        type: 'renameRequest',
+        payload: {
+          requestId: currentRequestId,
+          newName: newName,
+          collection: activeCollection,
+          folder: activeFolder
+        }
+      });
+    }
+
+    if (reqNameInput) {
+      autoResizeInput(reqNameInput);
+      reqNameInput.addEventListener('input', () => autoResizeInput(reqNameInput));
+      reqNameInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          triggerRename();
+          reqNameInput.blur();
+        }
+      });
+      reqNameInput.addEventListener('change', triggerRename);
+      if (btnRename) {
+        btnRename.addEventListener('click', triggerRename);
+      }
+    }
+
+    const btnToggleDynamicEl = document.getElementById('btn-toggle-dynamic-vars');
+    if (btnToggleDynamicEl) {
+      btnToggleDynamicEl.addEventListener('click', () => {
+        showDynamicVars = !showDynamicVars;
+        renderInheritedVars();
+      });
     }
 
     // Wire URL input → live preview
@@ -2016,6 +2277,7 @@ export function getRequestPanelHtml(
 
       return {
         requestId: currentRequestId,
+        requestName: document.getElementById('req-name-input')?.value?.trim() || '',
         method: document.getElementById('method-select').value,
         url: document.getElementById('url-input').value.trim(),
         profile: profileSelect ? profileSelect.value : '',
@@ -2276,12 +2538,25 @@ export function getRequestPanelHtml(
 
       if (msg.type === 'saved') {
         currentRequestId = msg.id;
+        if (msg.name && reqNameInput) {
+          reqNameInput.value = msg.name;
+          lastSavedName = msg.name;
+          autoResizeInput(reqNameInput);
+        }
         const statusPill = document.getElementById('resp-status');
         statusPill.textContent = 'Saved';
         statusPill.className = 'pill status-2xx';
         setTimeout(() => {
           if (statusPill.textContent === 'Saved') statusPill.textContent = 'Waiting';
         }, 2000);
+      }
+
+      if (msg.type === 'requestRenamed' && msg.name) {
+        if (reqNameInput) {
+          reqNameInput.value = msg.name;
+          lastSavedName = msg.name;
+          autoResizeInput(reqNameInput);
+        }
       }
 
       if (msg.type === 'fileSelected' && msg.rowId) {

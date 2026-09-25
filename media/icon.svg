@@ -1,14 +1,116 @@
 <svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="128" height="128" rx="24" fill="#0F172A"/>
-  <circle cx="64" cy="64" r="42" fill="url(#paint0_linear_1_2)"/>
-  <path d="M35 68C48.2625 54.7375 78.7375 54.7375 92 68" stroke="#E0F2FE" stroke-width="8" stroke-linecap="round"/>
-  <path d="M48 82C54.1961 88.1961 73.8039 88.1961 80 82" stroke="#E0F2FE" stroke-width="8" stroke-linecap="round"/>
-  <path d="M55 54L73 38" stroke="#E0F2FE" stroke-width="8" stroke-linecap="round"/>
-  <path d="M64 25V52" stroke="#E0F2FE" stroke-width="8" stroke-linecap="round"/>
   <defs>
-    <linearGradient id="paint0_linear_1_2" x1="19" y1="27" x2="103" y2="101" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#38BDF8"/>
-      <stop offset="1" stop-color="#2563EB"/>
+    <!-- Background Gradient -->
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="128" y2="128" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0F172A"/>
+      <stop offset="100%" stop-color="#090D16"/>
+    </linearGradient>
+
+    <!-- Nest Glow -->
+    <radialGradient id="eggGlow" cx="64" cy="56" r="38" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.35"/>
+      <stop offset="60%" stop-color="#0284C7" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#0F172A" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Eggs Gradients -->
+    <linearGradient id="egg1Grad" x1="40" y1="36" x2="60" y2="68" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#7DD3FC"/>
+      <stop offset="45%" stop-color="#0284C7"/>
+      <stop offset="100%" stop-color="#0369A1"/>
+    </linearGradient>
+
+    <linearGradient id="egg2Grad" x1="54" y1="32" x2="74" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#BAE6FD"/>
+      <stop offset="50%" stop-color="#38BDF8"/>
+      <stop offset="100%" stop-color="#0284C7"/>
+    </linearGradient>
+
+    <linearGradient id="egg3Grad" x1="68" y1="36" x2="88" y2="68" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#93C5FD"/>
+      <stop offset="50%" stop-color="#3B82F6"/>
+      <stop offset="100%" stop-color="#1D4ED8"/>
+    </linearGradient>
+
+    <!-- Twigs Gradients -->
+    <linearGradient id="twigAmber" x1="16" y1="60" x2="112" y2="100" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FBBF24"/>
+      <stop offset="40%" stop-color="#D97706"/>
+      <stop offset="80%" stop-color="#B45309"/>
+      <stop offset="100%" stop-color="#92400E"/>
+    </linearGradient>
+
+    <linearGradient id="twigGold" x1="20" y1="70" x2="108" y2="90" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FDE68A"/>
+      <stop offset="50%" stop-color="#F59E0B"/>
+      <stop offset="100%" stop-color="#B45309"/>
+    </linearGradient>
+
+    <linearGradient id="twigCyan" x1="24" y1="65" x2="104" y2="85" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="100%" stop-color="#0284C7"/>
+    </linearGradient>
+
+    <linearGradient id="twigDark" x1="20" y1="75" x2="108" y2="105" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#78350F"/>
+      <stop offset="50%" stop-color="#451A03"/>
+      <stop offset="100%" stop-color="#78350F"/>
     </linearGradient>
   </defs>
+
+  <!-- Squircle Base Container -->
+  <rect width="128" height="128" rx="28" fill="url(#bgGrad)"/>
+  <rect x="1" y="1" width="126" height="126" rx="27" stroke="#334155" stroke-width="1.5" stroke-opacity="0.6"/>
+
+  <!-- Warm/Cyan Egg Glow -->
+  <ellipse cx="64" cy="56" rx="36" ry="24" fill="url(#eggGlow)"/>
+
+  <!-- Left Egg -->
+  <g transform="rotate(-14 50 54)">
+    <ellipse cx="50" cy="54" rx="11.5" ry="16" fill="url(#egg1Grad)"/>
+    <!-- Specular Sheen -->
+    <ellipse cx="46.5" cy="46" rx="3.5" ry="6" fill="#FFFFFF" fill-opacity="0.45" transform="rotate(-15 46.5 46)"/>
+  </g>
+
+  <!-- Right Egg -->
+  <g transform="rotate(14 78 54)">
+    <ellipse cx="78" cy="54" rx="11.5" ry="16" fill="url(#egg3Grad)"/>
+    <!-- Specular Sheen -->
+    <ellipse cx="74.5" cy="46" rx="3.5" ry="6" fill="#FFFFFF" fill-opacity="0.4" transform="rotate(-10 74.5 46)"/>
+  </g>
+
+  <!-- Center Egg (Front) -->
+  <g>
+    <ellipse cx="64" cy="52" rx="12.5" ry="17.5" fill="url(#egg2Grad)"/>
+    <!-- Specular Sheen -->
+    <ellipse cx="60" cy="43" rx="4" ry="7" fill="#FFFFFF" fill-opacity="0.6" transform="rotate(-15 60 43)"/>
+    <!-- Subtle Data / Node Ring on Center Egg (API symbol) -->
+    <circle cx="64" cy="55" r="4.5" stroke="#FFFFFF" stroke-width="1.2" stroke-opacity="0.5" stroke-dasharray="2 2"/>
+    <circle cx="64" cy="55" r="1.5" fill="#FFFFFF" fill-opacity="0.8"/>
+  </g>
+
+  <!-- Woven Bird's Nest Twigs Structure -->
+  <!-- Deep Background Twigs -->
+  <path d="M 22 66 C 26 94, 102 94, 106 66" stroke="url(#twigDark)" stroke-width="7" stroke-linecap="round" fill="none"/>
+
+  <!-- Nest Bowl Strands -->
+  <path d="M 18 68 C 38 88, 90 88, 110 68" stroke="url(#twigAmber)" stroke-width="5" stroke-linecap="round" fill="none"/>
+  <path d="M 24 75 C 44 98, 84 98, 104 75" stroke="url(#twigGold)" stroke-width="4.5" stroke-linecap="round" fill="none"/>
+  <path d="M 30 84 C 48 103, 80 103, 98 84" stroke="url(#twigAmber)" stroke-width="4" stroke-linecap="round" fill="none"/>
+
+  <!-- Interweaving Cross Twigs -->
+  <path d="M 19 72 C 48 83, 80 67, 109 76" stroke="url(#twigGold)" stroke-width="3" stroke-linecap="round" fill="none"/>
+  <path d="M 22 79 C 55 69, 75 87, 106 72" stroke="url(#twigCyan)" stroke-width="2.2" stroke-linecap="round" fill="none"/>
+  <path d="M 26 87 C 50 97, 78 81, 102 87" stroke="url(#twigAmber)" stroke-width="3" stroke-linecap="round" fill="none"/>
+  <path d="M 36 94 C 54 104, 74 104, 92 94" stroke="url(#twigGold)" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+
+  <!-- Natural Twig Ends Protrusions -->
+  <path d="M 17 64 L 28 70" stroke="url(#twigGold)" stroke-width="3" stroke-linecap="round"/>
+  <path d="M 111 64 L 100 70" stroke="url(#twigGold)" stroke-width="3" stroke-linecap="round"/>
+  <path d="M 14 73 L 26 77" stroke="url(#twigAmber)" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M 114 73 L 102 77" stroke="url(#twigAmber)" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M 20 83 L 12 79" stroke="url(#twigAmber)" stroke-width="2" stroke-linecap="round"/>
+  <path d="M 108 83 L 116 79" stroke="url(#twigAmber)" stroke-width="2" stroke-linecap="round"/>
+  <path d="M 32 97 L 24 102" stroke="url(#twigDark)" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M 96 97 L 104 102" stroke="url(#twigDark)" stroke-width="2.5" stroke-linecap="round"/>
 </svg>

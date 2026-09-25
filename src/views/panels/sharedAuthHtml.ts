@@ -1,4 +1,4 @@
-import { ProfileAuth } from '../../types';
+import { ProfileAuth, StoredToken } from '../../types';
 
 function escapeHtml(str: unknown): string {
   if (str === null || str === undefined) return '';
@@ -17,7 +17,7 @@ export function renderAuthCss(): string {
       display: flex;
       flex-direction: column;
       gap: 14px;
-      max-width: 580px;
+      max-width: 620px;
     }
     .form-group {
       display: flex;
@@ -82,10 +82,212 @@ export function renderAuthCss(): string {
       color: var(--muted);
       line-height: 1.4;
     }
+
+    /* Token Vault Picker & Provenance Styles */
+    .token-vault-box {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .vault-badge {
+      font-size: 10px;
+      color: var(--muted);
+      background: var(--badge-bg);
+      padding: 2px 7px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      font-weight: 500;
+    }
+    .token-provenance-card {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--primary);
+      border-radius: 4px;
+      padding: 10px 12px;
+      font-size: 11px;
+      margin-top: 4px;
+    }
+    .provenance-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 4px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .provenance-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      text-transform: uppercase;
+    }
+    .provenance-status {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 10px;
+    }
+    .provenance-status.active {
+      background: rgba(78, 201, 176, 0.15);
+      color: #4ec9b0;
+      border: 1px solid rgba(78, 201, 176, 0.3);
+    }
+    .provenance-status.expired {
+      background: rgba(241, 76, 76, 0.15);
+      color: #f14c4c;
+      border: 1px solid rgba(241, 76, 76, 0.3);
+    }
+    .provenance-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px 14px;
+    }
+    .prov-item {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .prov-label {
+      color: var(--muted);
+      font-size: 10px;
+      text-transform: uppercase;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+    }
+    .prov-val {
+      color: var(--text);
+      font-family: var(--vscode-editor-font-family, monospace);
+      font-size: 11px;
+      overflow-wrap: break-word;
+    }
+    .vault-action-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 4px;
+    }
+    .btn-save-to-vault {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 4px 10px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      outline: none;
+    }
+    .btn-save-to-vault:hover {
+      background: var(--primary);
+      color: var(--primary-fg);
+      border-color: var(--primary);
+    }
   `;
 }
 
-export function renderAuthFieldsHtml(auth?: ProfileAuth, targetDescription: string = 'this item'): string {
+function renderTokenPickerAndProvenance(
+  pickerId: string,
+  inputTargetId: string,
+  currentTokenId?: string,
+  tokens: StoredToken[] = []
+): string {
+  const selectedToken = tokens.find((t) => t.id === currentTokenId);
+  const now = Date.now();
+
+  const options = [
+    `<option value="" ${!selectedToken ? 'selected' : ''}>— Enter token manually / custom —</option>`,
+    ...tokens.map((t) => {
+      const isSelected = t.id === currentTokenId;
+      const isExpired = t.expiresAt > 0 && t.expiresAt < now;
+      const originDesc = t.envName || t.profileName || 'Vault';
+      const statusText = isExpired ? ' (Expired)' : '';
+      const label = `${t.tokenName || t.tier || 'Token'} [${originDesc}]${statusText}`;
+      return `<option value="${escapeHtml(t.id)}" data-token="${escapeHtml(t.accessToken)}" data-origin="${escapeHtml(t.envName || t.profileName || 'Vault')}" data-url="${escapeHtml(t.sourceUrl || '')}" data-client="${escapeHtml(t.clientId || '')}" data-created="${t.createdAt || 0}" data-expires="${t.expiresAt || 0}" data-scopes="${escapeHtml((t.scopes || []).join(' '))}" ${isSelected ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+    }),
+  ].join('\n');
+
+  const provOrigin = selectedToken ? (selectedToken.envName || selectedToken.profileName || 'Vault') : '—';
+  const provUrl = selectedToken?.sourceUrl || '—';
+  const provClient = selectedToken?.clientId || '—';
+  const provCreated = selectedToken?.createdAt ? new Date(selectedToken.createdAt).toLocaleString() : '—';
+  const provExpires = selectedToken?.expiresAt
+    ? selectedToken.expiresAt < now
+      ? 'Expired'
+      : `Expires in ${Math.round((selectedToken.expiresAt - now) / 60000)}m`
+    : 'No Expiry / Static';
+  const provScopes = selectedToken?.scopes?.length ? selectedToken.scopes.join(', ') : 'None';
+  const isProvActive = selectedToken && (!selectedToken.expiresAt || selectedToken.expiresAt >= now);
+
+  return `
+    <div class="form-group token-vault-box">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+        <label class="form-label" for="${pickerId}">Select Existing Token (Vault)</label>
+        <span class="vault-badge" id="${pickerId}-count">${tokens.length} in vault</span>
+      </div>
+      <select id="${pickerId}" class="form-control token-vault-select" data-target="${inputTargetId}">
+        ${options}
+      </select>
+
+      <div id="${pickerId}-card" class="token-provenance-card" style="display: ${selectedToken ? 'flex' : 'none'};">
+        <div class="provenance-header">
+          <span class="provenance-title">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a2 2 0 0 1 2 2v2H6V3a2 2 0 0 1 2-2zm3 4V3a3 3 0 1 0-6 0v2H4a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-1z"/></svg>
+            TOKEN PROVENANCE
+          </span>
+          <span id="${pickerId}-status" class="provenance-status ${isProvActive ? 'active' : 'expired'}">
+            ${isProvActive ? 'Active' : 'Expired'}
+          </span>
+        </div>
+        <div class="provenance-grid">
+          <div class="prov-item">
+            <span class="prov-label">Origin / Source</span>
+            <span id="${pickerId}-val-origin" class="prov-val">${escapeHtml(provOrigin)}</span>
+          </div>
+          <div class="prov-item">
+            <span class="prov-label">Acquired From URL</span>
+            <span id="${pickerId}-val-url" class="prov-val" style="word-break: break-all;">${escapeHtml(provUrl)}</span>
+          </div>
+          <div class="prov-item">
+            <span class="prov-label">OAuth Client ID</span>
+            <span id="${pickerId}-val-client" class="prov-val">${escapeHtml(provClient)}</span>
+          </div>
+          <div class="prov-item">
+            <span class="prov-label">Acquired At</span>
+            <span id="${pickerId}-val-created" class="prov-val">${escapeHtml(provCreated)}</span>
+          </div>
+          <div class="prov-item">
+            <span class="prov-label">Expires</span>
+            <span id="${pickerId}-val-expires" class="prov-val">${escapeHtml(provExpires)}</span>
+          </div>
+          <div class="prov-item">
+            <span class="prov-label">Granted Scopes</span>
+            <span id="${pickerId}-val-scopes" class="prov-val">${escapeHtml(provScopes)}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+export function renderAuthFieldsHtml(
+  auth?: ProfileAuth,
+  targetDescription: string = 'this item',
+  availableTokens: StoredToken[] = []
+): string {
   const authType = auth?.type || 'none';
   const authToken = auth?.token || '';
   const authHeader = auth?.headerName || 'Authorization';
@@ -100,6 +302,7 @@ export function renderAuthFieldsHtml(auth?: ProfileAuth, targetDescription: stri
   const authGrantType = auth?.grantType || 'authorization_code';
   const authUsername = auth?.username || '';
   const authPassword = auth?.password || '';
+  const selectedTokenId = auth?.selectedTokenId;
 
   return `
     <div class="auth-grid">
@@ -121,6 +324,8 @@ export function renderAuthFieldsHtml(auth?: ProfileAuth, targetDescription: stri
 
       <!-- Section: Bearer Token -->
       <div id="section-bearer" class="auth-section">
+        ${renderTokenPickerAndProvenance('bearer-token-select', 'bearer-token', selectedTokenId, availableTokens)}
+
         <div class="form-group">
           <label class="form-label" for="bearer-token">Token</label>
           <div class="password-wrapper">
@@ -132,6 +337,12 @@ export function renderAuthFieldsHtml(auth?: ProfileAuth, targetDescription: stri
               placeholder="Enter bearer token"
             />
             <button type="button" class="btn-toggle-mask icon-btn" title="Toggle visibility">👁</button>
+          </div>
+          <div class="vault-action-row">
+            <span class="help-hint">Enter custom bearer token or select one from the vault above.</span>
+            <button type="button" class="btn-save-to-vault" data-input="bearer-token" title="Save this token into your profile vault for reuse">
+              💾 Save to Vault
+            </button>
           </div>
         </div>
 
@@ -209,6 +420,8 @@ export function renderAuthFieldsHtml(auth?: ProfileAuth, targetDescription: stri
           </select>
         </div>
 
+        ${renderTokenPickerAndProvenance('oauth-token-select', 'oauth-token', selectedTokenId, availableTokens)}
+
         <div class="form-group">
           <label class="form-label" for="oauth-token">Access Token</label>
           <div class="password-wrapper">
@@ -221,7 +434,12 @@ export function renderAuthFieldsHtml(auth?: ProfileAuth, targetDescription: stri
             />
             <button type="button" class="btn-toggle-mask icon-btn" title="Toggle visibility">👁</button>
           </div>
-          <span class="help-hint">Current Bearer access token used to authorize requests.</span>
+          <div class="vault-action-row">
+            <span class="help-hint">Current Bearer access token used to authorize requests.</span>
+            <button type="button" class="btn-save-to-vault" data-input="oauth-token" title="Save this token into your profile vault for reuse">
+              💾 Save to Vault
+            </button>
+          </div>
         </div>
 
         <div class="form-row-2">
@@ -388,6 +606,153 @@ export function getSharedAuthClientScript(): string {
       });
     });
 
+    // --- Token Vault Selection & Provenance Synchronizer ---
+    function formatTimeRemaining(expiresMs) {
+      if (!expiresMs || expiresMs <= 0) return 'No Expiry';
+      const diff = expiresMs - Date.now();
+      if (diff <= 0) return 'Expired';
+      const mins = Math.floor(diff / 60000);
+      if (mins < 60) return 'in ' + mins + 'm';
+      const hours = Math.floor(mins / 60);
+      if (hours < 24) return 'in ' + hours + 'h ' + (mins % 60) + 'm';
+      const days = Math.floor(hours / 24);
+      return 'in ' + days + 'd';
+    }
+
+    function syncTokenVaultPicker(sel) {
+      if (!sel) return;
+      const targetId = sel.dataset.target;
+      const input = document.getElementById(targetId);
+      const card = document.getElementById(sel.id + '-card');
+      const opt = sel.options[sel.selectedIndex];
+
+      if (opt && opt.value) {
+        if (input) {
+          input.value = opt.dataset.token || '';
+        }
+        if (card) {
+          const originEl = document.getElementById(sel.id + '-val-origin');
+          const urlEl = document.getElementById(sel.id + '-val-url');
+          const clientEl = document.getElementById(sel.id + '-val-client');
+          const createdEl = document.getElementById(sel.id + '-val-created');
+          const expiresEl = document.getElementById(sel.id + '-val-expires');
+          const scopesEl = document.getElementById(sel.id + '-val-scopes');
+          const statusEl = document.getElementById(sel.id + '-status');
+
+          if (originEl) originEl.textContent = opt.dataset.origin || 'Vault';
+          if (urlEl) urlEl.textContent = opt.dataset.url || '—';
+          if (clientEl) clientEl.textContent = opt.dataset.client || '—';
+          const createdMs = parseInt(opt.dataset.created || '0', 10);
+          if (createdEl) createdEl.textContent = createdMs > 0 ? new Date(createdMs).toLocaleString() : '—';
+          const expiresMs = parseInt(opt.dataset.expires || '0', 10);
+          const isExpired = expiresMs > 0 && expiresMs < Date.now();
+          if (expiresEl) expiresEl.textContent = expiresMs > 0 ? (isExpired ? 'Expired' : 'Active (' + formatTimeRemaining(expiresMs) + ')') : 'No Expiry / Static';
+          if (scopesEl) scopesEl.textContent = opt.dataset.scopes || 'None';
+
+          if (statusEl) {
+            statusEl.textContent = isExpired ? 'Expired' : 'Active';
+            statusEl.className = 'provenance-status ' + (isExpired ? 'expired' : 'active');
+          }
+          card.style.display = 'flex';
+        }
+      } else {
+        if (card) {
+          card.style.display = 'none';
+        }
+      }
+    }
+
+    document.querySelectorAll('.token-vault-select').forEach(sel => {
+      sel.addEventListener('change', () => syncTokenVaultPicker(sel));
+    });
+
+    // Reset picker when user manually edits token input
+    ['bearer-token', 'oauth-token'].forEach(inputId => {
+      const input = document.getElementById(inputId);
+      if (input) {
+        input.addEventListener('input', () => {
+          const picker = document.querySelector('.token-vault-select[data-target="' + inputId + '"]');
+          if (picker) {
+            const opt = picker.options[picker.selectedIndex];
+            if (opt && opt.dataset.token !== input.value) {
+              picker.value = '';
+              const card = document.getElementById(picker.id + '-card');
+              if (card) card.style.display = 'none';
+            }
+          }
+        });
+      }
+    });
+
+    // Save to Vault buttons
+    document.querySelectorAll('.btn-save-to-vault').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const inputId = btn.dataset.input;
+        const input = document.getElementById(inputId);
+        const tokenVal = input ? input.value.trim() : '';
+        if (!tokenVal) {
+          alert('Please enter a token value before saving to vault.');
+          return;
+        }
+
+        const nameInput = document.getElementById('item-name') || document.getElementById('crumb-request-name');
+        const defaultName = (nameInput ? nameInput.value.trim() : 'Manual') + ' Token';
+        const tokenName = prompt('Enter a label for this token in your vault:', defaultName);
+        if (tokenName !== null && tokenName.trim()) {
+          const tokenUrl = document.getElementById('oauth-token-url')?.value || '';
+          const clientId = document.getElementById('oauth-client-id')?.value || '';
+          const envSelect = document.getElementById('environment-select');
+          const envName = envSelect ? envSelect.value : '';
+
+          if (typeof vscode !== 'undefined') {
+            vscode.postMessage({
+              type: 'saveTokenToVault',
+              payload: {
+                token: tokenVal,
+                name: tokenName.trim(),
+                sourceUrl: tokenUrl,
+                clientId: clientId,
+                envName: envName,
+              }
+            });
+          }
+        }
+      });
+    });
+
+    // Live update token options when tokens are added or updated in vault
+    function updateAllTokenSelects(tokens, selectedId) {
+      if (!Array.isArray(tokens)) return;
+      document.querySelectorAll('.token-vault-select').forEach(sel => {
+        const targetId = sel.dataset.target;
+        const currentVal = selectedId || sel.value;
+        const now = Date.now();
+
+        let html = '<option value="">— Enter token manually / custom —</option>';
+        tokens.forEach(t => {
+          const isSelected = t.id === currentVal;
+          const isExpired = t.expiresAt > 0 && t.expiresAt < now;
+          const originDesc = t.envName || t.profileName || 'Vault';
+          const statusText = isExpired ? ' (Expired)' : '';
+          const label = (t.tokenName || t.tier || 'Token') + ' [' + originDesc + ']' + statusText;
+          html += '<option value="' + (t.id || '') + '" data-token="' + (t.accessToken || '') + '" data-origin="' + originDesc + '" data-url="' + (t.sourceUrl || '') + '" data-client="' + (t.clientId || '') + '" data-created="' + (t.createdAt || 0) + '" data-expires="' + (t.expiresAt || 0) + '" data-scopes="' + ((t.scopes || []).join(' ')) + '" ' + (isSelected ? 'selected' : '') + '>' + label + '</option>';
+        });
+        sel.innerHTML = html;
+
+        const countBadge = document.getElementById(sel.id + '-count');
+        if (countBadge) countBadge.textContent = tokens.length + ' in vault';
+
+        syncTokenVaultPicker(sel);
+      });
+    }
+
+    window.addEventListener('message', event => {
+      const data = event.data;
+      if (data && data.type === 'tokensUpdated') {
+        updateAllTokenSelects(data.tokens, data.selectedId);
+      }
+    });
+
     // Helper to extract full auth values from DOM
     function extractAuthValues() {
       if (!authTypeSelect) return { type: 'none' };
@@ -406,11 +771,13 @@ export function getSharedAuthClientScript(): string {
       let grantType = undefined;
       let username = undefined;
       let password = undefined;
+      let selectedTokenId = undefined;
 
       if (authType === 'bearer') {
         token = (document.getElementById('bearer-token')?.value || '').trim();
         headerPrefix = (document.getElementById('bearer-prefix')?.value || '').trim() || 'Bearer';
         headerName = (document.getElementById('bearer-header')?.value || '').trim() || 'Authorization';
+        selectedTokenId = document.getElementById('bearer-token-select')?.value || undefined;
       } else if (authType === 'apiKey') {
         keyName = (document.getElementById('apikey-key')?.value || '').trim() || 'X-API-Key';
         token = (document.getElementById('apikey-value')?.value || '').trim();
@@ -427,6 +794,7 @@ export function getSharedAuthClientScript(): string {
         tokenUrl = (document.getElementById('oauth-token-url')?.value || '').trim();
         const scopesRaw = (document.getElementById('oauth-scopes')?.value || '').trim();
         scopes = scopesRaw ? scopesRaw.split(/[\\s,]+/).filter(Boolean) : [];
+        selectedTokenId = document.getElementById('oauth-token-select')?.value || undefined;
       } else if (authType === 'basic') {
         username = (document.getElementById('basic-username')?.value || '').trim();
         password = (document.getElementById('basic-password')?.value || '').trim();
@@ -448,8 +816,8 @@ export function getSharedAuthClientScript(): string {
         grantType,
         username,
         password,
+        selectedTokenId,
       };
     }
   `;
 }
-

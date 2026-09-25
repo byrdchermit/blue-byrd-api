@@ -77,6 +77,7 @@ const {
   BlueByrdCollectionsTreeProvider,
   BlueByrdEnvironmentsTreeProvider,
   BlueByrdHistoryTreeProvider,
+  BlueByrdToolsTreeProvider,
   BlueByrdTreeCoordinator,
 } = require(path.join(repoDist, 'views/tree'));
 
@@ -914,16 +915,16 @@ console.log('✓ Request panel script integrity & syntax validation passed');
   // Validate package.json commands and context menu definitions
   const pkgJson = require('../package.json');
   const commands = pkgJson.contributes.commands.map(c => c.command);
-  assert(commands.includes('blueByrdApiClient.createProfile'), 'package.json must register blueByrdApiClient.createProfile');
-  assert(commands.includes('blueByrdApiClient.createEnvironment'), 'package.json must register blueByrdApiClient.createEnvironment');
+  assert(commands.includes('byrdsnestApiClient.createProfile') || commands.includes('blueByrdApiClient.createProfile'), 'package.json must register createProfile');
+  assert(commands.includes('byrdsnestApiClient.createEnvironment') || commands.includes('blueByrdApiClient.createEnvironment'), 'package.json must register createEnvironment');
 
   const contextMenus = pkgJson.contributes.menus['view/item/context'];
-  const profileInline = contextMenus.find(m => m.command === 'blueByrdApiClient.createProfile' && m.when.includes('bluebyrd.section.profiles'));
-  assert(profileInline, 'Must have inline menu action on bluebyrd.section.profiles');
+  const profileInline = contextMenus.find(m => (m.command === 'byrdsnestApiClient.createProfile' || m.command === 'blueByrdApiClient.createProfile') && (m.when.includes('byrdsnest.section.profiles') || m.when.includes('bluebyrd.section.profiles')));
+  assert(profileInline, 'Must have inline menu action on section.profiles');
   assert.strictEqual(profileInline.group, 'inline@1', 'Profile inline action must be positioned at inline@1');
 
-  const envInline = contextMenus.find(m => m.command === 'blueByrdApiClient.createEnvironment' && m.when.includes('bluebyrd.section.environments'));
-  assert(envInline, 'Must have inline menu action on bluebyrd.section.environments');
+  const envInline = contextMenus.find(m => (m.command === 'byrdsnestApiClient.createEnvironment' || m.command === 'blueByrdApiClient.createEnvironment') && (m.when.includes('byrdsnest.section.environments') || m.when.includes('bluebyrd.section.environments')));
+  assert(envInline, 'Must have inline menu action on section.environments');
   assert.strictEqual(envInline.group, 'inline@1', 'Environment inline action must be positioned at inline@1');
 
   console.log('✓ Create Profile and Create Environment lifecycle & manifest verified');
@@ -1077,46 +1078,46 @@ console.log('✓ Request panel script integrity & syntax validation passed');
   assert.strictEqual(parsedOpenApi.collection.requests[0].name, 'Check API Status', 'Untagged request should be health check');
   console.log('✓ OpenAPI 3.0 / Swagger 2.0 import passed');
 
-  // Test 29: Native bluebyrd Export & Full Backup Restore Lifecycle + Manifest
+  // Test 29: Native byrdsnest Export & Full Backup Restore Lifecycle + Manifest
   const exportColJson = ImportExportService.exportCollection(parsedPostmanCol.collection);
-  assert(exportColJson.includes('bluebyrd.collection'), 'Exported collection must include kind');
+  assert(exportColJson.includes('byrdsnest.collection') || exportColJson.includes('bluebyrd.collection'), 'Exported collection must include kind');
   const reimportedCol = ImportExportService.parse(exportColJson);
-  assert.strictEqual(reimportedCol.type, 'bluebyrd-collection', 'Should roundtrip native collection');
+  assert(reimportedCol.type === 'byrdsnest-collection' || reimportedCol.type === 'bluebyrd-collection', 'Should roundtrip native collection');
   assert.strictEqual(reimportedCol.collection.name, 'Stripe Payments Collection');
 
   const exportEnvJson = ImportExportService.exportEnvironment(parsedPostmanEnv.environmentName, parsedPostmanEnv.environment);
-  assert(exportEnvJson.includes('bluebyrd.environment'), 'Exported environment must include kind');
+  assert(exportEnvJson.includes('byrdsnest.environment') || exportEnvJson.includes('bluebyrd.environment'), 'Exported environment must include kind');
   const reimportedEnv = ImportExportService.parse(exportEnvJson);
-  assert.strictEqual(reimportedEnv.type, 'bluebyrd-environment', 'Should roundtrip native environment');
+  assert(reimportedEnv.type === 'byrdsnest-environment' || reimportedEnv.type === 'bluebyrd-environment', 'Should roundtrip native environment');
   assert.strictEqual(reimportedEnv.environmentName, 'Production Environment');
 
   const exportBackupJson = ImportExportService.exportBackup(stateManager.getState());
-  assert(exportBackupJson.includes('bluebyrdBackupVersion'), 'Exported backup must include version header');
+  assert(exportBackupJson.includes('byrdsnestBackupVersion') || exportBackupJson.includes('bluebyrdBackupVersion'), 'Exported backup must include version header');
   const reimportedBackup = ImportExportService.parse(exportBackupJson);
-  assert.strictEqual(reimportedBackup.type, 'bluebyrd-backup', 'Should roundtrip full workspace backup');
+  assert(reimportedBackup.type === 'byrdsnest-backup' || reimportedBackup.type === 'bluebyrd-backup', 'Should roundtrip full workspace backup');
   assert(reimportedBackup.state.collections.length > 0, 'Backup state must preserve collections');
   assert(reimportedBackup.state.profiles.length > 0, 'Backup state must preserve profiles');
 
   // Manifest check for Import/Export commands & menus
-  assert(commands.includes('blueByrdApiClient.importJson'), 'package.json must register blueByrdApiClient.importJson');
-  assert(commands.includes('blueByrdApiClient.exportCollection'), 'package.json must register blueByrdApiClient.exportCollection');
-  assert(commands.includes('blueByrdApiClient.exportEnvironment'), 'package.json must register blueByrdApiClient.exportEnvironment');
-  assert(commands.includes('blueByrdApiClient.exportBackup'), 'package.json must register blueByrdApiClient.exportBackup');
+  assert(commands.includes('byrdsnestApiClient.importJson') || commands.includes('blueByrdApiClient.importJson'), 'package.json must register importJson');
+  assert(commands.includes('byrdsnestApiClient.exportCollection') || commands.includes('blueByrdApiClient.exportCollection'), 'package.json must register exportCollection');
+  assert(commands.includes('byrdsnestApiClient.exportEnvironment') || commands.includes('blueByrdApiClient.exportEnvironment'), 'package.json must register exportEnvironment');
+  assert(commands.includes('byrdsnestApiClient.exportBackup') || commands.includes('blueByrdApiClient.exportBackup'), 'package.json must register exportBackup');
 
   const titleMenus = pkgJson.contributes.menus['view/title'];
-  assert(titleMenus.some(m => m.command === 'blueByrdApiClient.importJson'), 'Title menu must include importJson action');
+  assert(titleMenus.some(m => m.command === 'byrdsnestApiClient.importJson' || m.command === 'blueByrdApiClient.importJson'), 'Title menu must include importJson action');
 
-  const importColInline = contextMenus.find(m => m.command === 'blueByrdApiClient.importJson' && m.when.includes('bluebyrd.section.collections'));
+  const importColInline = contextMenus.find(m => (m.command === 'byrdsnestApiClient.importJson' || m.command === 'blueByrdApiClient.importJson') && (m.when.includes('byrdsnest.section.collections') || m.when.includes('bluebyrd.section.collections')));
   assert(importColInline, 'Must have inline import action on collections section');
-  const importEnvInline = contextMenus.find(m => m.command === 'blueByrdApiClient.importJson' && m.when.includes('bluebyrd.section.environments'));
+  const importEnvInline = contextMenus.find(m => (m.command === 'byrdsnestApiClient.importJson' || m.command === 'blueByrdApiClient.importJson') && (m.when.includes('byrdsnest.section.environments') || m.when.includes('bluebyrd.section.environments')));
   assert(importEnvInline, 'Must have inline import action on environments section');
 
-  const exportColInline = contextMenus.find(m => m.command === 'blueByrdApiClient.exportCollection' && m.when.includes('bluebyrd.collection'));
+  const exportColInline = contextMenus.find(m => (m.command === 'byrdsnestApiClient.exportCollection' || m.command === 'blueByrdApiClient.exportCollection') && (m.when.includes('byrdsnest.collection') || m.when.includes('bluebyrd.collection')));
   assert(exportColInline, 'Must have inline export action on collection item');
-  const exportEnvInline = contextMenus.find(m => m.command === 'blueByrdApiClient.exportEnvironment' && m.when.includes('bluebyrd.environment'));
+  const exportEnvInline = contextMenus.find(m => (m.command === 'byrdsnestApiClient.exportEnvironment' || m.command === 'blueByrdApiClient.exportEnvironment') && (m.when.includes('byrdsnest.environment') || m.when.includes('bluebyrd.environment')));
   assert(exportEnvInline, 'Must have inline export action on environment item');
 
-  console.log('✓ Native bluebyrd Export & Full Backup Restore Lifecycle + Manifest passed');
+  console.log('✓ Native byrdsnest Export & Full Backup Restore Lifecycle + Manifest passed');
 
   // Test 30: Legacy Profile Backup & Multi-Collection/Environment Compatibility
   const legacyBackupSample = JSON.stringify({
@@ -1172,7 +1173,7 @@ console.log('✓ Request panel script integrity & syntax validation passed');
   });
 
   const parsedLegacy = ImportExportService.parse(legacyBackupSample);
-  assert.strictEqual(parsedLegacy.type, 'bluebyrd-backup', 'Should detect legacy profile backup');
+  assert(parsedLegacy.type === 'byrdsnest-backup' || parsedLegacy.type === 'bluebyrd-backup', 'Should detect legacy profile backup');
   assert.strictEqual(parsedLegacy.state.profiles.length, 1);
   assert.strictEqual(parsedLegacy.state.profiles[0].name, 'LegacyProfile');
   assert.strictEqual(parsedLegacy.state.collections.length, 1);
@@ -1190,7 +1191,7 @@ console.log('✓ Request panel script integrity & syntax validation passed');
   if (fs.existsSync(actualFilePath)) {
     const rawActual = fs.readFileSync(actualFilePath, 'utf8');
     const parsedActual = ImportExportService.parse(rawActual);
-    assert.strictEqual(parsedActual.type, 'bluebyrd-backup');
+    assert(parsedActual.type === 'byrdsnest-backup' || parsedActual.type === 'bluebyrd-backup');
     assert.strictEqual(parsedActual.state.collections.length, 5, 'Should import all 5 collections');
     const totalActualReqs = parsedActual.state.collections.reduce(
       (sum, c) => sum + c.requests.length + c.folders.reduce((fsum, f) => fsum + f.requests.length, 0),
@@ -1228,7 +1229,7 @@ console.log('✓ Request panel script integrity & syntax validation passed');
 
   const pkgJsonUpdated = require('../package.json');
   const allCommands = pkgJsonUpdated.contributes.commands.map(c => c.command);
-  assert(allCommands.includes('blueByrdApiClient.checkForUpdates'), 'package.json must register blueByrdApiClient.checkForUpdates');
+  assert(allCommands.includes('byrdsnestApiClient.checkForUpdates') || allCommands.includes('blueByrdApiClient.checkForUpdates'), 'package.json must register checkForUpdates');
 
   console.log('✓ UpdateService semver logic & update command manifest verified');
 
@@ -2049,7 +2050,311 @@ console.log('✓ Request panel script integrity & syntax validation passed');
     console.log('✓ Pre-Request & Post-Response Scripting Engine, Sandboxed Assertions, PM Parity & Persistence verified');
   }
 
-  console.log('\nAll 39 verification test suites passed successfully! 🎉');
+  // Test 40: Parent-Child Environment Dropdown Hierarchy & Inheritance Annotations
+  {
+    const fakeStorage40 = new Map();
+    const ctx40 = {
+      workspaceState: {
+        get: (key) => fakeStorage40.get(key),
+        update: (key, val) => { fakeStorage40.set(key, val); return Promise.resolve(); }
+      }
+    };
+    const stateManager40 = new BlueByrdStateManager(ctx40);
+
+    // Setup Parent and Child environments
+    const parentEnv = stateManager40.createEnvironment('Algorand Mainnet', 'http://192.168.1.199:8080');
+    stateManager40.saveEnvironment('Algorand Mainnet', parentEnv.env);
+
+    const childEnv = stateManager40.createEnvironment('Algorand Mainnet localhost', 'http://localhost:8080');
+    childEnv.env.inheritsFrom = 'Algorand Mainnet';
+    stateManager40.saveEnvironment('Algorand Mainnet localhost', childEnv.env);
+
+    const appState40 = stateManager40.getState();
+
+    const panelHtml = getRequestPanelHtml(
+      { url: 'http://localhost:8080/v2/status', environment: 'Algorand Mainnet localhost' },
+      appState40,
+      [],
+      []
+    );
+
+    // Verify parent option is labeled with Parent indicator
+    assert(panelHtml.includes('Algorand Mainnet (Parent • 1 child)'), 'Parent environment must display parent indicator and child count');
+
+    // Verify child option is indented with tree chevron and inherits label
+    assert(panelHtml.includes('↳ Algorand Mainnet localhost (inherits: Algorand Mainnet)'), 'Child environment must be indented with chevron and parent inheritance note');
+    assert(panelHtml.includes('value="Algorand Mainnet localhost" selected'), 'Active child environment must have selected attribute with exact environment name');
+
+    // Verify child appears immediately after parent in HTML order
+    const parentIdx = panelHtml.indexOf('value="Algorand Mainnet"');
+    const childIdx = panelHtml.indexOf('value="Algorand Mainnet localhost"');
+    assert(parentIdx !== -1 && childIdx !== -1 && childIdx > parentIdx, 'Child environment option must follow parent hierarchically in dropdown');
+
+    console.log('✓ Parent-Child Environment Dropdown Hierarchy & Inheritance Annotations verified');
+  }
+
+  // Test 41: Request Renaming Lifecycle, Breadcrumb Inline Display & State Synchronization
+  {
+    const fakeStorage41 = new Map();
+    const ctx41 = {
+      workspaceState: {
+        get: (key) => fakeStorage41.get(key),
+        update: (key, val) => { fakeStorage41.set(key, val); return Promise.resolve(); }
+      }
+    };
+    const stateManager41 = new BlueByrdStateManager(ctx41);
+
+    // Save initial request inside collection and folder
+    const initialReq = stateManager41.saveRequest({
+      id: 'req-status-001',
+      name: 'Get Node Status',
+      method: 'GET',
+      url: '{{baseUrl}}/v2/status',
+      collection: 'Algod REST API. v0.0.1',
+      folder: 'public',
+      headers: {},
+      body: ''
+    });
+
+    assert.strictEqual(initialReq.name, 'Get Node Status', 'Initial request name must match');
+
+    // 1. Rename request via stateManager
+    const renamedReq = stateManager41.renameRequest('req-status-001', 'Get Node Health & Status');
+    assert(renamedReq, 'renameRequest must return the updated request');
+    assert.strictEqual(renamedReq.name, 'Get Node Health & Status', 'Request name must be updated in state');
+
+    // Verify retrieval preserves new name
+    const found = stateManager41.getRequest('req-status-001');
+    assert(found && found.request.name === 'Get Node Health & Status', 'Retrieved request must reflect renamed title');
+
+    // 2. Request Panel HTML rendering: breadcrumbs must display editable request name
+    const appState41 = stateManager41.getState();
+    const panelHtml = getRequestPanelHtml(
+      {
+        id: 'req-status-001',
+        requestName: found.request.name,
+        collection: 'Algod REST API. v0.0.1',
+        folder: 'public',
+        url: '{{baseUrl}}/v2/status'
+      },
+      appState41,
+      [],
+      []
+    );
+
+    assert(panelHtml.includes('id="req-name-input"'), 'Breadcrumbs must contain request name input element');
+    assert(panelHtml.includes('value="Get Node Health &amp; Status"'), 'Request name input must display current request name');
+    assert(panelHtml.includes('id="btn-rename-req"'), 'Breadcrumbs must contain rename action button');
+    assert(panelHtml.includes('<title>Get Node Health &amp; Status</title>'), 'Panel title must reflect request name');
+    assert(panelHtml.includes('requestName: document.getElementById(\'req-name-input\')?.value?.trim() || \'\''), 'Payload assembly must include requestName from input');
+
+    console.log('✓ Request Renaming Lifecycle, Breadcrumb Inline Display & State Synchronization verified');
+  }
+
+  // Test 42: Built-in Dynamic Variables Hidden by Default & Toggle Control
+  {
+    const fakeStorage42 = new Map();
+    const ctx42 = {
+      workspaceState: {
+        get: (key) => fakeStorage42.get(key),
+        update: (key, val) => { fakeStorage42.set(key, val); return Promise.resolve(); }
+      }
+    };
+    const stateManager42 = new BlueByrdStateManager(ctx42);
+    const varService42 = new VariableService(stateManager42);
+
+    // Context with NO user variables, but built-in dynamic variables are present in resolution
+    const varDetails42 = varService42.resolveVariablesDetailed(undefined, undefined, undefined, undefined, []);
+    const dynamicOnly = varDetails42.inherited.filter(i => i.source === 'dynamic');
+    assert(dynamicOnly.length === 5, 'VariableService must provide 5 default dynamic variables');
+
+    const appState42 = stateManager42.getState();
+    const panelHtml = getRequestPanelHtml(
+      { url: '{{baseUrl}}/health' },
+      appState42,
+      varDetails42.inherited,
+      []
+    );
+
+    // Verify toggle button is present
+    assert(panelHtml.includes('id="btn-toggle-dynamic-vars"'), 'Inherited variables header must contain dynamic toggle button');
+    assert(panelHtml.includes('class="btn-toggle-dynamic"'), 'Toggle button must have btn-toggle-dynamic class');
+
+    // Verify showDynamicVars is false by default in client script
+    assert(panelHtml.includes('let showDynamicVars = false;'), 'Dynamic variables must be hidden by default in script state');
+
+    // Verify separation of user vars from dynamic vars in client logic
+    assert(panelHtml.includes('const userVars = (currentInheritedVars || []).filter(item => item.source !== \'dynamic\');'), 'Script must filter user vars from dynamic vars');
+    assert(panelHtml.includes('inheritedVarsCount.textContent = userVars.length + \' available\';'), 'Count badge must reflect user-inherited variables only');
+
+    console.log('✓ Built-in Dynamic Variables Hidden by Default & Toggle Control verified');
+  }
+
+  // Test 43: Tools Sidebar View & cURL Command Parser
+  {
+    // 1. cURL GET request with headers
+    const curlGet = 'curl "https://api.example.com/v1/health" -H "Accept: application/json" -H "X-Client: bluebyrd"';
+    const parsedGet = ImportExportService.parseCurl(curlGet);
+    assert.strictEqual(parsedGet.method, 'GET');
+    assert.strictEqual(parsedGet.url, 'https://api.example.com/v1/health');
+    assert.strictEqual(parsedGet.headers['Accept'], 'application/json');
+    assert.strictEqual(parsedGet.headers['X-Client'], 'bluebyrd');
+    assert.strictEqual(parsedGet.body, '');
+    assert.strictEqual(parsedGet.bodyType, 'none');
+
+    // 2. cURL POST request with JSON payload and line continuation slashes
+    const curlPost = `curl -X POST https://api.example.com/v1/transactions \\
+      -H "Content-Type: application/json" \\
+      -d '{"amount": 100, "currency": "USD"}'`;
+    const parsedPost = ImportExportService.parseCurl(curlPost);
+    assert.strictEqual(parsedPost.method, 'POST');
+    assert.strictEqual(parsedPost.url, 'https://api.example.com/v1/transactions');
+    assert.strictEqual(parsedPost.headers['Content-Type'], 'application/json');
+    assert.strictEqual(parsedPost.bodyType, 'json');
+    const parsedJson = JSON.parse(parsedPost.body);
+    assert.strictEqual(parsedJson.amount, 100);
+    assert.strictEqual(parsedJson.currency, 'USD');
+
+    // 3. cURL form urlencoded with implicit POST from -d
+    const curlForm = 'curl https://api.example.com/oauth/token -H "Content-Type: application/x-www-form-urlencoded" -d "grant_type=client_credentials&client_id=foo"';
+    const parsedForm = ImportExportService.parseCurl(curlForm);
+    assert.strictEqual(parsedForm.method, 'POST');
+    assert.strictEqual(parsedForm.bodyType, 'form-urlencoded');
+    assert(parsedForm.body.includes('grant_type=client_credentials'));
+
+    // 4. BlueByrdToolsTreeProvider items and commands
+    const fakeStorage43 = new Map();
+    const ctx43 = {
+      workspaceState: {
+        get: (key) => fakeStorage43.get(key),
+        update: (key, val) => { fakeStorage43.set(key, val); return Promise.resolve(); }
+      }
+    };
+    const stateManager43 = new BlueByrdStateManager(ctx43);
+    const mockTokenService43 = {
+      getAllTokens: () => [
+        { id: 'tok-1', profileId: 'default', accessToken: 'xyz' },
+        { id: 'tok-2', profileId: 'default', accessToken: 'abc' }
+      ]
+    };
+
+    const toolsProvider = new BlueByrdToolsTreeProvider(stateManager43, mockTokenService43);
+    const toolItems = toolsProvider.getChildren();
+
+    assert.strictEqual(toolItems.length, 6, 'Tools panel must have 6 items');
+
+    const expectedLabels = [
+      'History Inspector',
+      'OAuth Token Vault',
+      'Import from cURL...',
+      'Import API Data...',
+      'Export Full Backup...',
+      'Check for Updates...'
+    ];
+    const actualLabels = toolItems.map(item => item.label);
+    assert.deepStrictEqual(actualLabels, expectedLabels, 'Tool labels must match expected order and naming');
+
+    // Verify token count badge
+    const tokenItem = toolItems.find(t => t.label === 'OAuth Token Vault');
+    assert.strictEqual(tokenItem.description, '2 stored', 'Token vault description must display count of stored tokens');
+    assert(tokenItem.command.command === 'byrdsnestApiClient.manageTokens' || tokenItem.command.command === 'blueByrdApiClient.manageTokens');
+
+    // Verify cURL item command
+    const curlItem = toolItems.find(t => t.label === 'Import from cURL...');
+    assert(curlItem.command.command === 'byrdsnestApiClient.importCurl' || curlItem.command.command === 'blueByrdApiClient.importCurl');
+
+    // Verify coordinator compatibility
+    const coordinator43 = new BlueByrdTreeCoordinator(
+      new BlueByrdProfilesTreeProvider(stateManager43),
+      new BlueByrdCollectionsTreeProvider(stateManager43),
+      new BlueByrdEnvironmentsTreeProvider(stateManager43),
+      toolsProvider
+    );
+    assert(coordinator43.toolsProvider, 'Coordinator must expose toolsProvider');
+    assert(coordinator43.historyProvider, 'Coordinator must maintain historyProvider alias for backwards compatibility');
+
+    console.log('✓ Tools Sidebar View & cURL Command Parser verified');
+  }
+
+  // ==========================================
+  // Suite 44: Token Vault Provenance, UI Layout Consistency & Nest Icon
+  // ==========================================
+  {
+    const fs = require('fs');
+    const { renderAuthFieldsHtml } = require(path.join(repoDist, 'views/panels/sharedAuthHtml'));
+    const stateManager44 = new BlueByrdStateManager(mockContext);
+    const tokenService44 = new TokenService();
+    const authService44 = new AuthService(stateManager44, tokenService44);
+
+    const testToken = {
+      id: 'tok-suite44-abc',
+      profileId: 'profile-main',
+      profileName: 'Algorand',
+      envName: 'Algorand Mainnet',
+      envId: 'env-algorand-mainnet',
+      tokenName: 'Algonode Mainnet Token',
+      accessToken: 'a-super-secret-vault-token-xyz',
+      tokenType: 'Bearer',
+      createdAt: Date.now() - 3600000,
+      expiresAt: Date.now() + 86400000,
+      source: 'oauth2',
+      sourceUrl: 'https://mainnet-api.algonode.cloud/oauth/token',
+      clientId: 'algorand-client-44',
+      scopes: ['read', 'write']
+    };
+
+    await tokenService44.saveToken(testToken);
+    const retrieved = await tokenService44.getTokens('profile-main');
+    assert.strictEqual(retrieved.length, 1);
+    assert.strictEqual(retrieved[0].id, 'tok-suite44-abc');
+    assert.strictEqual(retrieved[0].source, 'oauth2');
+    assert.strictEqual(retrieved[0].sourceUrl, 'https://mainnet-api.algonode.cloud/oauth/token');
+    assert.strictEqual(retrieved[0].clientId, 'algorand-client-44');
+    assert.strictEqual(tokenService44.getTokenById('tok-suite44-abc')?.accessToken, 'a-super-secret-vault-token-xyz');
+
+    // Verify AuthService header resolution using selectedTokenId
+    const resolvedHeaders = authService44.resolveAuthHeaders(
+      'profile-main',
+      'env-algorand-mainnet',
+      undefined,
+      undefined,
+      {},
+      {
+        auth: {
+          type: 'bearer',
+          selectedTokenId: 'tok-suite44-abc'
+        }
+      }
+    );
+    assert.strictEqual(resolvedHeaders['Authorization'], 'Bearer a-super-secret-vault-token-xyz', 'AuthService must resolve bearer header using selectedTokenId from vault');
+
+    // Verify renderAuthFieldsHtml includes vault picker and provenance card
+    const authHtml = renderAuthFieldsHtml({
+      type: 'bearer',
+      selectedTokenId: 'tok-suite44-abc'
+    }, 'this request', [testToken]);
+    assert(authHtml.includes('bearer-token-select'), 'Auth HTML must contain bearer token selector');
+    assert(authHtml.includes('TOKEN PROVENANCE'), 'Auth HTML must render token provenance section');
+    assert(authHtml.includes('a-super-secret-vault-token-xyz'), 'Auth HTML options must include token payload');
+    assert(authHtml.includes('https://mainnet-api.algonode.cloud/oauth/token'), 'Auth HTML must include origin URL in metadata');
+
+    // Verify Settings Panel HTML layout consistency
+    const settingsHtml = getSettingsPanelHtml('environment', { id: 'env-1', baseUrl: 'https://api.test' }, 'Mainnet', undefined, [], [], [testToken]);
+    assert(settingsHtml.includes('width: 100%'), 'Settings panel container must use 100% full width matching request panel');
+    assert(settingsHtml.includes('padding: 14px'), 'Settings panel body must use 14px padding matching request panel');
+    assert(settingsHtml.includes('token-vault-select'), 'Settings panel must render token vault picker in Auth tab');
+
+    // Verify bird's nest icon assets exist
+    const svgIcon = fs.readFileSync(path.join(__dirname, '../media/icon.svg'), 'utf8');
+    assert(svgIcon.includes('Bird'), 'SVG icon must reflect bird nest design');
+    assert(fs.existsSync(path.join(__dirname, '../media/icon.png')), 'PNG icon must exist');
+    const pngStat = fs.statSync(path.join(__dirname, '../media/icon.png'));
+    assert(pngStat.size > 500, 'PNG icon must be a valid non-empty image file');
+
+    console.log('✓ Token Vault Provenance, UI Layout Consistency & Nest Icon verified');
+  }
+
+  console.log('\nAll 44 verification test suites passed successfully! 🎉');
   process.exit(0);
 })().catch(err => {
   console.error('Async test suite failure:', err);

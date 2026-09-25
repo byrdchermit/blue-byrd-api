@@ -16,8 +16,11 @@ export type ParsedImportResult =
   | { type: 'postman-collection'; collection: Collection }
   | { type: 'postman-environment'; environmentName: string; environment: EnvironmentConfig }
   | { type: 'openapi'; collection: Collection }
+  | { type: 'byrdsnest-collection'; collection: Collection }
   | { type: 'bluebyrd-collection'; collection: Collection }
+  | { type: 'byrdsnest-environment'; environmentName: string; environment: EnvironmentConfig }
   | { type: 'bluebyrd-environment'; environmentName: string; environment: EnvironmentConfig }
+  | { type: 'byrdsnest-backup'; state: AppState }
   | { type: 'bluebyrd-backup'; state: AppState };
 
 export class ImportExportService {
@@ -42,27 +45,30 @@ export class ImportExportService {
       throw new Error('Invalid input: Expected a JSON object.');
     }
 
-    // 1. Native bluebyrd backup
+    // 1. Native backup
     if (this.isBlueByrdBackup(data)) {
+      const isLegacy = data.bluebyrdBackupVersion !== undefined && data.byrdsnestBackupVersion === undefined;
       return {
-        type: 'bluebyrd-backup',
+        type: isLegacy ? 'bluebyrd-backup' : 'byrdsnest-backup',
         state: this.parseBlueByrdBackup(data),
       };
     }
 
-    // 2. Native bluebyrd single collection
+    // 2. Native single collection
     if (this.isBlueByrdCollection(data)) {
+      const isLegacy = data.kind === 'bluebyrd.collection';
       return {
-        type: 'bluebyrd-collection',
+        type: isLegacy ? 'bluebyrd-collection' : 'byrdsnest-collection',
         collection: this.parseBlueByrdCollection(data),
       };
     }
 
-    // 3. Native bluebyrd single environment
+    // 3. Native single environment
     if (this.isBlueByrdEnvironment(data)) {
       const { name, env } = this.parseBlueByrdEnvironment(data);
+      const isLegacy = data.kind === 'bluebyrd.environment';
       return {
-        type: 'bluebyrd-environment',
+        type: isLegacy ? 'bluebyrd-environment' : 'byrdsnest-environment',
         environmentName: name,
         environment: env,
       };
@@ -100,12 +106,112 @@ export class ImportExportService {
   }
 
   // ==========================================
+  // cURL Command Parser
+  // ==========================================
+
+  public static parseCurl(curlCommand: string): {
+    url: string;
+    method: string;
+    headers: Record<string, string>;
+    body: string;
+    bodyType: BodyType;
+  } {
+    const raw = curlCommand.replace(/\\\r?\n/g, ' ').trim();
+    if (!raw.toLowerCase().startsWith('curl')) {
+      throw new Error('Command must start with "curl"');
+    }
+
+    let method = 'GET';
+    const headers: Record<string, string> = {};
+    let body = '';
+    let url = '';
+
+    // Regex token matcher for flags, double-quoted, single-quoted, and unquoted arguments
+    const tokenRegex = /(-[A-Za-z0-9-]+|--[A-Za-z0-9-]+)|"([^"\\]*(?:\\.[^"\\]*)*)"|'([^'\\]*(?:\\.[^'\\]*)*)'|(\S+)/g;
+    const tokens: string[] = [];
+    let match: RegExpExecArray | null;
+
+    while ((match = tokenRegex.exec(raw)) !== null) {
+      if (match[1]) {
+        tokens.push(match[1]);
+      } else if (match[2] !== undefined) {
+        tokens.push(match[2].replace(/\\"/g, '"'));
+      } else if (match[3] !== undefined) {
+        tokens.push(match[3].replace(/\\'/g, "'"));
+      } else if (match[4]) {
+        tokens.push(match[4]);
+      }
+    }
+
+    let i = 1;
+    let explicitMethod = false;
+
+    while (i < tokens.length) {
+      const token = tokens[i];
+
+      if (token === '-X' || token === '--request') {
+        i++;
+        if (i < tokens.length) {
+          method = tokens[i].toUpperCase();
+          explicitMethod = true;
+        }
+      } else if (token === '-H' || token === '--header') {
+        i++;
+        if (i < tokens.length) {
+          const headerStr = tokens[i];
+          const colonIdx = headerStr.indexOf(':');
+          if (colonIdx > 0) {
+            const hKey = headerStr.substring(0, colonIdx).trim();
+            const hVal = headerStr.substring(colonIdx + 1).trim();
+            headers[hKey] = hVal;
+          }
+        }
+      } else if (token === '-d' || token === '--data' || token === '--data-raw' || token === '--data-binary') {
+        i++;
+        if (i < tokens.length) {
+          body = tokens[i];
+          if (!explicitMethod) {
+            method = 'POST';
+          }
+        }
+      } else if (token.startsWith('http://') || token.startsWith('https://') || token.startsWith('{{')) {
+        url = token;
+      } else if (!token.startsWith('-') && !url && i > 1) {
+        url = token;
+      }
+      i++;
+    }
+
+    let bodyType: BodyType = 'none';
+    if (body) {
+      bodyType = 'raw';
+      try {
+        JSON.parse(body);
+        bodyType = 'json';
+      } catch {
+        const ct = Object.keys(headers).find(k => k.toLowerCase() === 'content-type');
+        if (ct && headers[ct].includes('application/x-www-form-urlencoded')) {
+          bodyType = 'form-urlencoded';
+        }
+      }
+    }
+
+    return {
+      url: url || '',
+      method,
+      headers,
+      body,
+      bodyType
+    };
+  }
+
+  // ==========================================
   // Format Detectors
   // ==========================================
 
   private static isBlueByrdBackup(data: any): boolean {
     if (!data || typeof data !== 'object') return false;
-    if (data.bluebyrdBackupVersion !== undefined) return true;
+    if (data.byrdsnestBackupVersion !== undefined || data.bluebyrdBackupVersion !== undefined) return true;
     if (
       Array.isArray(data.collections) &&
       (Array.isArray(data.environments) || (data.environments && typeof data.environments === 'object'))
@@ -116,7 +222,7 @@ export class ImportExportService {
   }
 
   private static isBlueByrdCollection(data: any): boolean {
-    if (data.kind === 'bluebyrd.collection') return true;
+    if (data.kind === 'byrdsnest.collection' || data.kind === 'bluebyrd.collection') return true;
     return (
       typeof data.name === 'string' &&
       !data.info &&
@@ -125,7 +231,7 @@ export class ImportExportService {
   }
 
   private static isBlueByrdEnvironment(data: any): boolean {
-    if (data.kind === 'bluebyrd.environment') return true;
+    if (data.kind === 'byrdsnest.environment' || data.kind === 'bluebyrd.environment') return true;
     if (data.info || data.openapi || data.swagger) return false;
     if (Array.isArray(data.collections)) return false;
     return (
@@ -970,7 +1076,8 @@ export class ImportExportService {
 
   public static exportCollection(collection: Collection): string {
     const exportData = {
-      kind: 'bluebyrd.collection',
+      kind: 'byrdsnest.collection',
+      legacyKind: 'bluebyrd.collection',
       version: '1.0.0',
       exportedAt: new Date().toISOString(),
       collection,
@@ -980,7 +1087,8 @@ export class ImportExportService {
 
   public static exportEnvironment(name: string, environment: EnvironmentConfig): string {
     const exportData = {
-      kind: 'bluebyrd.environment',
+      kind: 'byrdsnest.environment',
+      legacyKind: 'bluebyrd.environment',
       version: '1.0.0',
       exportedAt: new Date().toISOString(),
       name,
@@ -991,6 +1099,7 @@ export class ImportExportService {
 
   public static exportBackup(state: AppState): string {
     const exportData = {
+      byrdsnestBackupVersion: '1.0.0',
       bluebyrdBackupVersion: '1.0.0',
       exportedAt: new Date().toISOString(),
       profiles: state.profiles,

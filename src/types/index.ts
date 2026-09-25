@@ -15,6 +15,7 @@ export type SidebarNodeKind =
 export interface StoredToken {
   id: string;
   profileId: string;
+  profileName?: string;
   envName?: string;
   envId?: string;
   tokenName?: string;
@@ -26,6 +27,9 @@ export interface StoredToken {
   createdAt: number;
   scopes?: string[];
   configHash?: string;
+  source?: 'oauth2' | 'manual' | 'script' | 'vault';
+  sourceUrl?: string;
+  clientId?: string;
 }
 
 export type RequestContext = {
@@ -84,6 +88,7 @@ export type ProfileAuth = {
   tokenUrl?: string;
   scopes?: string[];
   grantType?: 'authorization_code' | 'client_credentials' | 'implicit' | 'password';
+  selectedTokenId?: string;
 };
 
 export type AuthSettings = {

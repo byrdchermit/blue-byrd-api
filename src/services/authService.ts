@@ -39,6 +39,12 @@ export class AuthService {
 
       if (auth.type === 'bearer' || auth.type === 'oauth2') {
         let tokenValue = auth.token?.trim() ?? '';
+        if (auth.selectedTokenId && this.tokenService) {
+          const found = this.tokenService.getAllTokens().find((t) => t.id === auth.selectedTokenId);
+          if (found && found.accessToken) {
+            tokenValue = found.accessToken;
+          }
+        }
         if (!tokenValue && auth.type === 'oauth2' && this.tokenService) {
           const stored = this.tokenService.getValidTokenSync(
             profile?.id || profileNameOrId || 'global',

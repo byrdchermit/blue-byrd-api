@@ -13,6 +13,8 @@ export class BlueByrdCollectionsTreeProvider
     'application/vnd.code.tree.bluebyrd',
   ];
   public readonly dragMimeTypes: readonly string[] = [
+    'application/vnd.code.tree.byrdsnestcollections',
+    'application/vnd.code.tree.byrdsnest',
     'application/vnd.code.tree.bluebyrdcollections',
     'application/vnd.code.tree.bluebyrd',
   ];
@@ -347,7 +349,7 @@ export class BlueByrdCollectionsTreeProvider
       [],
       {
         title: 'Open Request',
-        command: 'blueByrdApiClient.openRequestPanel',
+        command: 'byrdsnestApiClient.openRequestPanel',
         arguments: [reqContext],
       },
       req.method,

@@ -1,4 +1,4 @@
-import { Collection, CollectionFolder, EnvironmentConfig, Profile } from '../../types';
+import { Collection, CollectionFolder, EnvironmentConfig, Profile, StoredToken } from '../../types';
 import { renderAuthCss, renderAuthFieldsHtml, getSharedAuthClientScript } from './sharedAuthHtml';
 
 export function getSettingsPanelHtml(
@@ -7,7 +7,8 @@ export function getSettingsPanelHtml(
   displayName: string,
   collectionName?: string,
   allEnvironments?: Array<{ id: string; name: string }>,
-  allProfiles?: Array<{ id: string; name: string }>
+  allProfiles?: Array<{ id: string; name: string }>,
+  availableTokens: StoredToken[] = []
 ): string {
   const isProfile = target === 'profile';
   const isEnv = target === 'environment';
@@ -104,15 +105,17 @@ export function getSettingsPanelHtml(
       font-size: 13px;
     }
     body {
-      padding: 16px 20px;
+      padding: 14px;
     }
 
     .container {
-      max-width: 860px;
-      margin: 0 auto;
+      width: 100%;
+      max-width: 100%;
+      margin: 0;
       display: flex;
       flex-direction: column;
-      gap: 14px;
+      gap: 12px;
+      min-height: calc(100vh - 28px);
     }
 
     /* Top Context & Action Bar */
@@ -125,7 +128,7 @@ export function getSettingsPanelHtml(
       background: var(--panel);
       border: 1px solid var(--border);
       border-radius: 6px;
-      padding: 10px 14px;
+      padding: 8px 12px;
     }
     .context-left {
       display: flex;
@@ -141,6 +144,7 @@ export function getSettingsPanelHtml(
       padding: 3px 8px;
       border-radius: 4px;
       text-transform: uppercase;
+      border: 1px solid var(--border);
     }
     .scope-profile { background: rgba(79, 193, 255, 0.15); color: #4fc1ff; }
     .scope-environment { background: rgba(206, 145, 120, 0.15); color: #ce9178; }
@@ -158,6 +162,7 @@ export function getSettingsPanelHtml(
       outline: none;
       flex: 1;
       max-width: 320px;
+      transition: border-color 0.15s ease;
     }
     .name-input:focus { border-color: var(--primary); }
 
@@ -170,20 +175,21 @@ export function getSettingsPanelHtml(
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      padding: 6px 14px;
+      padding: 7px 14px;
       border-radius: 4px;
       font-size: 12px;
-      font-weight: 500;
+      font-weight: 600;
       cursor: pointer;
       border: 1px solid transparent;
       outline: none;
-      transition: background 0.15s ease;
+      user-select: none;
+      transition: background 0.15s ease, filter 0.15s ease;
     }
     .btn-primary {
       background: var(--primary);
       color: var(--primary-fg);
     }
-    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-primary:hover { filter: brightness(1.1); }
     .btn-secondary {
       background: var(--surface);
       border-color: var(--border);
@@ -191,12 +197,19 @@ export function getSettingsPanelHtml(
     }
     .btn-secondary:hover { background: rgba(255, 255, 255, 0.08); }
 
+    input[type="checkbox"] {
+      accent-color: var(--primary);
+      cursor: pointer;
+      width: 14px;
+      height: 14px;
+    }
+
     /* Environment Configuration Banner */
     .env-url-banner {
       background: var(--panel);
       border: 1px solid var(--border);
       border-radius: 6px;
-      padding: 12px 14px;
+      padding: 10px 12px;
       display: flex;
       flex-direction: column;
       gap: 10px;
@@ -216,6 +229,7 @@ export function getSettingsPanelHtml(
       font-family: var(--vscode-editor-font-family, monospace);
       outline: none;
       width: 100%;
+      transition: border-color 0.15s ease;
     }
     .env-url-input:focus { border-color: var(--primary); }
     .help-hint {
@@ -230,10 +244,12 @@ export function getSettingsPanelHtml(
       border-radius: 6px;
       display: flex;
       flex-direction: column;
+      flex: 1;
       min-height: 400px;
     }
     .tab-header {
       display: flex;
+      gap: 2px;
       border-bottom: 1px solid var(--border);
       background: rgba(0, 0, 0, 0.15);
       padding: 0 8px;
@@ -243,7 +259,7 @@ export function getSettingsPanelHtml(
       border: none;
       border-bottom: 2px solid transparent;
       color: var(--muted);
-      padding: 10px 14px;
+      padding: 8px 14px;
       font-size: 12px;
       font-weight: 600;
       cursor: pointer;
@@ -497,7 +513,7 @@ export function getSettingsPanelHtml(
           </div>
           ` : ''}
 
-          ${renderAuthFieldsHtml(auth, target)}
+          ${renderAuthFieldsHtml(auth, target, availableTokens)}
         </div>
       </section>
 
@@ -742,6 +758,7 @@ export function getSettingsPanelHtml(
               tokenUrl: authValues.tokenUrl,
               scopes: authValues.scopes,
               grantType: authValues.grantType,
+              selectedTokenId: authValues.selectedTokenId,
               inheritAuth,
               variables,
               headers,
@@ -750,7 +767,7 @@ export function getSettingsPanelHtml(
           });
         });
       } catch (err) {
-        console.error('[bluebyrd Settings] Webview runtime error:', err);
+        console.error('[byrdsnest api client Settings] Webview runtime error:', err);
       }
     })();
   </script>

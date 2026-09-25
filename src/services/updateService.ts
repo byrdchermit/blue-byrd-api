@@ -61,7 +61,7 @@ export class UpdateService {
         path: `/repos/${this.repoOwner}/${this.repoName}/releases/latest`,
         method: 'GET',
         headers: {
-          'User-Agent': 'bluebyrd-vscode-extension',
+          'User-Agent': 'byrdsnest-vscode-extension',
           Accept: 'application/vnd.github.v3+json',
         },
         timeout: 6000,
@@ -126,7 +126,7 @@ export class UpdateService {
 
       if (!release || !release.tag_name) {
         if (manual) {
-          vscode.window.showInformationMessage(`bluebyrd is up to date (v${this.currentVersion}).`);
+          vscode.window.showInformationMessage(`byrdsnest api client is up to date (v${this.currentVersion}).`);
         }
         return false;
       }
@@ -140,7 +140,7 @@ export class UpdateService {
         const downloadUrl = vsixAsset?.browser_download_url || release.html_url;
 
         const choice = await vscode.window.showInformationMessage(
-          `A new version of bluebyrd is available: v${cleanTag} (installed: v${this.currentVersion}).`,
+          `A new version of byrdsnest api client is available: v${cleanTag} (installed: v${this.currentVersion}).`,
           'Download Update',
           'View Changelog',
           'Later'
@@ -154,7 +154,7 @@ export class UpdateService {
         return true;
       } else {
         if (manual) {
-          vscode.window.showInformationMessage(`bluebyrd is up to date (v${this.currentVersion}).`);
+          vscode.window.showInformationMessage(`byrdsnest api client is up to date (v${this.currentVersion}).`);
         }
         return false;
       }
@@ -162,7 +162,7 @@ export class UpdateService {
       if (manual) {
         vscode.window.showWarningMessage(`Could not check for updates: ${err?.message || 'Network error'}`);
       } else {
-        console.warn('[bluebyrd] Background update check failed:', err?.message);
+        console.warn('[byrdsnest api client] Background update check failed:', err?.message);
       }
       return false;
     }

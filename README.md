@@ -1,12 +1,12 @@
-# bluebyrd (Beta)
+# byrdsnest api client
 
-> **Public Beta (v0.1.0)**: bluebyrd is currently in early public beta.  
-> 📦 **[Download latest blue-byrd-api-0.1.0.vsix](https://github.com/byrdchermit/blue-byrd-api/releases/latest)** · [Report an Issue](https://github.com/byrdchermit/blue-byrd-api/issues)
+> **Public Beta (v0.1.0)**: byrdsnest api client is currently in early public beta.  
+> 📦 **[Download latest byrdsnest-api-client-0.1.0.vsix](https://github.com/byrdchermit/byrdsnest-api-client/releases/latest)** · [Report an Issue](https://github.com/byrdchermit/byrdsnest-api-client/issues)
 
-bluebyrd is an open-source, local-first API client built natively for VS Code. The goal is to bring a Postman-like workflow directly into the editor with a fast request builder, environment-aware variables, saved collections, and clean response inspection.
+byrdsnest api client is an open-source, local-first API client built natively for VS Code. The goal is to bring a Postman-like workflow directly into the editor with a fast request builder, environment-aware variables, saved collections, and clean response inspection.
 
 ### Quick Install
-1. Download **[`blue-byrd-api-0.1.0.vsix`](https://github.com/byrdchermit/blue-byrd-api/releases/latest)**.
+1. Download **[`byrdsnest-api-client-0.1.0.vsix`](https://github.com/byrdchermit/byrdsnest-api-client/releases/latest)**.
 2. In VS Code, open the Extensions view (`Ctrl+Shift+X` / `Cmd+Shift+X`).
 3. Drag and drop the downloaded `.vsix` file into the Extensions sidebar (or click the `...` menu &rarr; **Install from VSIX...**).
 
@@ -37,24 +37,24 @@ bluebyrd is an open-source, local-first API client built natively for VS Code. T
   - Full request history tracking with single-click restore and rerun.
 - **Profiles & Environments Management**:
   - Direct sidebar creation: Hover over the **Profiles** or **Environments** headers in the explorer sidebar to reveal the `+` creation button.
-  - Command palette integration: Run `bluebyrd: New Profile` or `bluebyrd: New Environment` anytime from `Ctrl+Shift+P` / `Cmd+Shift+P`.
+  - Command palette integration: Run `byrdsnest api client: New Profile` or `byrdsnest api client: New Environment` anytime from `Ctrl+Shift+P` / `Cmd+Shift+P`.
   - Automatic configuration panel: Immediately opens the dedicated settings editor upon creation to configure Auth, variables, headers, and parent environments.
 - **Universal JSON Import & Export**:
   - **Postman Collections (v2 / v2.1)**: Import folders, requests, url query parameters, headers, auth (Bearer, Basic, API Key, OAuth2), and bodies (raw JSON, urlencoded, form-data).
-  - **Postman Environments**: Import variable sets and baseUrl presets directly into bluebyrd environments.
+  - **Postman Environments**: Import variable sets and baseUrl presets directly into byrdsnest api client environments.
   - **OpenAPI 3.0 / Swagger 2.0**: Auto-convert OpenAPI specifications into collections, tag groups into folders, path parameters into `{{param}}`, and schemas into JSON sample bodies.
   - **Native Workspace Backup & Share**: Export/import individual collections or environments, or create whole-workspace backup files with one click.
-  - **Interactive Tree & Command Integration**: Inline import/export buttons in the explorer sidebar and Command Palette shortcuts (`bluebyrd: Import JSON`, `bluebyrd: Export Collection as JSON`, `bluebyrd: Export Full Workspace Backup as JSON`).
+  - **Interactive Tree & Command Integration**: Inline import/export buttons in the explorer sidebar and Command Palette shortcuts (`byrdsnest api client: Import JSON`, `byrdsnest api client: Export Collection as JSON`, `byrdsnest api client: Export Full Workspace Backup as JSON`).
 - **Automated Update Notifier**:
   - Automatically checks GitHub Releases for newer versions once per day in the background.
   - Displays a clean update notification with one-click download and changelog view.
-  - Manual check on demand anytime via `bluebyrd: Check for Updates` in the Command Palette.
+  - Manual check on demand anytime via `byrdsnest api client: Check for Updates` in the Command Palette.
 
 ## Documentation
 
 - [User Guide & How-To (`HOWTO.md`)](HOWTO.md) — Comprehensive guide to requests, inheritance, auth, import/export, and more.
 - [Changelog (`CHANGELOG.md`)](CHANGELOG.md) — Release notes and version history.
-- [About bluebyrd (`ABOUT.md`)](ABOUT.md) — Mission, architecture, and open-source principles.
+- [About byrdsnest api client (`ABOUT.md`)](ABOUT.md) — Mission, architecture, and open-source principles.
 - [About the Author (`ABOUTME.md`)](ABOUTME.md) — Background and story behind the project.
 
 ## License

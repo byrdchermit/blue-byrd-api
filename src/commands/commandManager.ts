@@ -48,41 +48,50 @@ export class CommandManager {
     this.tokenService = tokenService || new TokenService(context.secrets);
   }
 
+  private regCmd(commandName: string, callback: (...args: any[]) => any): vscode.Disposable {
+    const d1 = vscode.commands.registerCommand(`byrdsnestApiClient.${commandName}`, callback);
+    const d2 = vscode.commands.registerCommand(`blueByrdApiClient.${commandName}`, callback);
+    return new vscode.Disposable(() => {
+      d1.dispose();
+      d2.dispose();
+    });
+  }
+
   public registerAll(): void {
     const s = this.context.subscriptions;
 
     // Open Sidebar
     s.push(
-      vscode.commands.registerCommand('blueByrdApiClient.openSidebar', () => {
-        vscode.commands.executeCommand('workbench.view.extension.blueByrdApiClient');
+      this.regCmd('openSidebar', () => {
+        vscode.commands.executeCommand('workbench.view.extension.byrdsnestApiClient');
       })
     );
 
     // Refresh Explorer
     s.push(
-      vscode.commands.registerCommand('blueByrdApiClient.refreshExplorer', () => {
+      this.regCmd('refreshExplorer', () => {
         this.treeProvider.refresh();
       })
     );
 
     // Open Request Panel
     s.push(
-      vscode.commands.registerCommand('blueByrdApiClient.openRequestPanel', (payload?: RequestContext) => {
+      this.regCmd('openRequestPanel', (payload?: RequestContext) => {
         BlueByrdPanel.createOrShow(
           this.context.extensionUri,
           payload,
           this.stateManager,
           this.httpService,
           this.variableService,
-          this.authService
+          this.authService,
+          this.tokenService
         );
       })
     );
 
     // Open Dedicated History Inspector Panel (Singleton)
     s.push(
-      vscode.commands.registerCommand(
-        'blueByrdApiClient.openHistoryPanel',
+      this.regCmd('openHistoryPanel',
         (arg?: BlueByrdTreeItem | { historyId?: string } | string) => {
           let selectedId: string | undefined;
           if (arg instanceof BlueByrdTreeItem) {
@@ -104,7 +113,7 @@ export class CommandManager {
 
     // Clear History
     s.push(
-      vscode.commands.registerCommand('blueByrdApiClient.clearHistory', async () => {
+      this.regCmd('clearHistory', async () => {
         const confirm = await vscode.window.showWarningMessage(
           'Are you sure you want to clear all request history?',
           { modal: true },
@@ -121,7 +130,7 @@ export class CommandManager {
 
     // New Request
     s.push(
-      vscode.commands.registerCommand('blueByrdApiClient.newRequest', (treeItem?: BlueByrdTreeItem) => {
+      this.regCmd('newRequest', (treeItem?: BlueByrdTreeItem) => {
         const state = this.stateManager.getState();
         const activeProfile = state.activeProfileId && state.activeProfileId !== 'all'
           ? this.stateManager.getProfile(state.activeProfileId)
@@ -149,14 +158,15 @@ export class CommandManager {
           this.stateManager,
           this.httpService,
           this.variableService,
-          this.authService
+          this.authService,
+          this.tokenService
         );
       })
     );
 
     // Switch Active Profile Scope
     s.push(
-      vscode.commands.registerCommand('blueByrdApiClient.switchActiveProfile', async () => {
+      this.regCmd('switchActiveProfile', async () => {
         const state = this.stateManager.getState();
         const activeProfileId = state.activeProfileId;
 
@@ -206,7 +216,7 @@ export class CommandManager {
 
     // Set Active Profile Directly (e.g. from context menu)
     s.push(
-      vscode.commands.registerCommand('blueByrdApiClient.setActiveProfile', (arg?: BlueByrdTreeItem | { id?: string; name?: string } | string) => {
+      this.regCmd('setActiveProfile', (arg?: BlueByrdTreeItem | { id?: string; name?: string } | string) => {
         let profileId: string | undefined;
         let profileName: string | undefined;
 
@@ -232,7 +242,7 @@ export class CommandManager {
 
     // Manage OAuth Tokens (QuickPick Token Vault)
     s.push(
-      vscode.commands.registerCommand('blueByrdApiClient.manageTokens', async (arg?: BlueByrdTreeItem | { profileId?: string }) => {
+      this.regCmd('manageTokens', async (arg?: BlueByrdTreeItem | { profileId?: string }) => {
         let profileId = (arg instanceof BlueByrdTreeItem ? arg.parentId || arg.itemId : arg?.profileId) || this.stateManager.getActiveProfileId() || 'global';
         if (profileId === 'all') profileId = 'global';
 
@@ -330,7 +340,7 @@ export class CommandManager {
 
     // Delete Token directly
     s.push(
-      vscode.commands.registerCommand('blueByrdApiClient.deleteToken', async (arg?: BlueByrdTreeItem | { profileId?: string; id?: string; name?: string }) => {
+      this.regCmd('deleteToken', async (arg?: BlueByrdTreeItem | { profileId?: string; id?: string; name?: string }) => {
         let profileId: string | undefined;
         let tokenId: string | undefined;
         let tokenLabel: string | undefined;
@@ -362,7 +372,7 @@ export class CommandManager {
 
     // Clear All Tokens for a Profile
     s.push(
-      vscode.commands.registerCommand('blueByrdApiClient.clearProfileTokens', async (arg?: BlueByrdTreeItem | { id?: string; name?: string }) => {
+      this.regCmd('clearProfileTokens', async (arg?: BlueByrdTreeItem | { id?: string; name?: string }) => {
         let profileId = (arg instanceof BlueByrdTreeItem ? arg.itemId : arg?.id) || this.stateManager.getActiveProfileId() || 'global';
         const profile = this.stateManager.getProfile(profileId);
         const profileName = profile ? profile.name : (profileId === 'global' ? 'Shared / Global' : profileId);
@@ -388,7 +398,7 @@ export class CommandManager {
 
     // Copy Token to Clipboard
     s.push(
-      vscode.commands.registerCommand('blueByrdApiClient.copyToken', async (arg?: BlueByrdTreeItem) => {
+      this.regCmd('copyToken', async (arg?: BlueByrdTreeItem) => {
         if (!arg || !arg.itemId || !arg.parentId) return;
         const tokens = await this.tokenService.getTokens(arg.parentId);
         const token = tokens.find((t) => t.id === arg.itemId);
@@ -401,7 +411,7 @@ export class CommandManager {
 
     // Switch Active Environment
     s.push(
-      vscode.commands.registerCommand('blueByrdApiClient.switchActiveEnvironment', async () => {
+      this.regCmd('switchActiveEnvironment', async () => {
         const state = this.stateManager.getState();
         const activeEnvName = state.activeEnvironmentName;
         const envEntries = Object.entries(state.environments);
@@ -411,18 +421,78 @@ export class CommandManager {
           return;
         }
 
-        const items: Array<vscode.QuickPickItem & { envName?: string }> = envEntries.map(([name, env]) => {
+        // Lookup maps for inheritance resolution
+        const envById = new Map<string, { name: string; env: typeof envEntries[0][1] }>();
+        const envByName = new Map<string, { name: string; env: typeof envEntries[0][1] }>();
+        for (const [name, env] of envEntries) {
+          envByName.set(name, { name, env });
+          if (env.id) envById.set(env.id, { name, env });
+        }
+
+        const childrenMap = new Map<string, Array<{ name: string; env: typeof envEntries[0][1] }>>();
+        const rootEntries: Array<{ name: string; env: typeof envEntries[0][1] }> = [];
+
+        for (const [name, env] of envEntries) {
+          const parentRef = env.inheritsFrom;
+          const parentEntry = parentRef ? (envById.get(parentRef) || envByName.get(parentRef)) : undefined;
+
+          if (parentEntry && parentEntry.name !== name) {
+            const key = parentEntry.env.id || parentEntry.name;
+            if (!childrenMap.has(key)) {
+              childrenMap.set(key, []);
+            }
+            childrenMap.get(key)!.push({ name, env });
+          } else {
+            rootEntries.push({ name, env });
+          }
+        }
+
+        const items: Array<vscode.QuickPickItem & { envName?: string }> = [];
+        const visitedNames = new Set<string>();
+
+        const addItem = (name: string, env: typeof envEntries[0][1], depth: number, visited: Set<string>) => {
+          const key = env.id || name;
+          if (visited.has(key)) return;
+          const nextVisited = new Set(visited).add(key);
+          visitedNames.add(name);
+
+          const rawChildren = childrenMap.get(key) || [];
+          const validChildren = rawChildren.filter(c => !visited.has(c.env.id || c.name));
+          const isParent = validChildren.length > 0;
           const isCurrent = activeEnvName === name || (env.id && activeEnvName === env.id);
+
+          const parentEntry = env.inheritsFrom ? (envById.get(env.inheritsFrom) || envByName.get(env.inheritsFrom)) : undefined;
+          const parentDisplayName = parentEntry ? parentEntry.name : env.inheritsFrom;
+
           const parts: string[] = [];
+          if (isParent) parts.push(`Parent (${validChildren.length})`);
+          if (parentDisplayName) parts.push(`inherits: ${parentDisplayName}`);
           if (env.baseUrl) parts.push(env.baseUrl);
-          if (env.inheritsFrom) parts.push(`inherits: ${env.inheritsFrom}`);
           if (isCurrent) parts.push('Current Active');
-          return {
-            label: `$(globe) ${name}`,
+
+          const prefix = depth > 0 ? '\u00A0\u00A0'.repeat(depth) + '↳ ' : '';
+          const icon = isParent ? '$(server-process)' : (depth > 0 ? '$(arrow-subwards)' : '$(globe)');
+
+          items.push({
+            label: `${prefix}${icon} ${name}`,
             description: parts.join(' • '),
             envName: name,
-          };
-        });
+          });
+
+          for (const child of validChildren) {
+            addItem(child.name, child.env, depth + 1, nextVisited);
+          }
+        };
+
+        for (const root of rootEntries) {
+          addItem(root.name, root.env, 0, new Set());
+        }
+
+        for (const [name, env] of envEntries) {
+          if (!visitedNames.has(name)) {
+            addItem(name, env, 0, new Set());
+          }
+        }
 
         items.push({
           label: '$(add) Create New Environment...',
@@ -451,7 +521,7 @@ export class CommandManager {
 
     // Set Active Environment Directly (e.g. from context menu)
     s.push(
-      vscode.commands.registerCommand('blueByrdApiClient.setActiveEnvironment', (arg?: BlueByrdTreeItem | { id?: string; name?: string } | string) => {
+      this.regCmd('setActiveEnvironment', (arg?: BlueByrdTreeItem | { id?: string; name?: string } | string) => {
         let envName: string | undefined;
 
         if (arg instanceof BlueByrdTreeItem) {
@@ -473,7 +543,7 @@ export class CommandManager {
 
     // Switch Context (Profile or Environment)
     s.push(
-      vscode.commands.registerCommand('blueByrdApiClient.switchContext', async () => {
+      this.regCmd('switchContext', async () => {
         const state = this.stateManager.getState();
         const activeProfile = state.activeProfileId && state.activeProfileId !== 'all'
           ? this.stateManager.getProfile(state.activeProfileId)
@@ -507,7 +577,7 @@ export class CommandManager {
 
     // Assign Profile Scope to Environment or Collection
     s.push(
-      vscode.commands.registerCommand('blueByrdApiClient.assignProfileScope', async (arg?: BlueByrdTreeItem) => {
+      this.regCmd('assignProfileScope', async (arg?: BlueByrdTreeItem) => {
         if (!arg || !arg.itemId) return;
 
         const state = this.stateManager.getState();
@@ -556,7 +626,7 @@ export class CommandManager {
 
     // Create Profile
     s.push(
-      vscode.commands.registerCommand('blueByrdApiClient.createProfile', async () => {
+      this.regCmd('createProfile', async () => {
         const name = await vscode.window.showInputBox({
           prompt: 'Enter a name for the new profile',
           placeHolder: 'e.g. Staging Team',
@@ -571,7 +641,8 @@ export class CommandManager {
             newProfile.name,
             this.stateManager,
             undefined,
-            newProfile.id
+            newProfile.id,
+            this.tokenService
           );
         }
       })
@@ -579,7 +650,7 @@ export class CommandManager {
 
     // Create Environment
     s.push(
-      vscode.commands.registerCommand('blueByrdApiClient.createEnvironment', async (treeItem?: BlueByrdTreeItem) => {
+      this.regCmd('createEnvironment', async (treeItem?: BlueByrdTreeItem) => {
         let profileId: string | undefined;
         if (treeItem?.kind === 'profile') {
           profileId = treeItem.itemId !== 'global' ? treeItem.itemId : undefined;
@@ -603,7 +674,8 @@ export class CommandManager {
             result.name,
             this.stateManager,
             undefined,
-            result.env.id
+            result.env.id,
+            this.tokenService
           );
         }
       })
@@ -611,7 +683,7 @@ export class CommandManager {
 
     // Create Child Environment
     s.push(
-      vscode.commands.registerCommand('blueByrdApiClient.createChildEnvironment', async (treeItem?: BlueByrdTreeItem | { id?: string; name?: string }) => {
+      this.regCmd('createChildEnvironment', async (treeItem?: BlueByrdTreeItem | { id?: string; name?: string }) => {
         let parentId: string | undefined;
         let parentName: string | undefined;
 
@@ -655,14 +727,15 @@ export class CommandManager {
           created.name,
           this.stateManager,
           undefined,
-          created.env.id
+          created.env.id,
+          this.tokenService
         );
       })
     );
 
     // Clone Environment
     s.push(
-      vscode.commands.registerCommand('blueByrdApiClient.cloneEnvironment', async (treeItem?: BlueByrdTreeItem | { id?: string; name?: string } | string) => {
+      this.regCmd('cloneEnvironment', async (treeItem?: BlueByrdTreeItem | { id?: string; name?: string } | string) => {
         let envIdOrName: string | undefined;
 
         if (treeItem instanceof BlueByrdTreeItem) {
@@ -721,7 +794,7 @@ export class CommandManager {
 
     // Create Collection
     s.push(
-      vscode.commands.registerCommand('blueByrdApiClient.createCollection', async (treeItem?: BlueByrdTreeItem) => {
+      this.regCmd('createCollection', async (treeItem?: BlueByrdTreeItem) => {
         let profileId: string | undefined;
         if (treeItem?.kind === 'profile') {
           profileId = treeItem.itemId !== 'global' ? treeItem.itemId : undefined;
@@ -745,7 +818,7 @@ export class CommandManager {
 
     // Create Folder
     s.push(
-      vscode.commands.registerCommand('blueByrdApiClient.createFolder', async (treeItem?: BlueByrdTreeItem) => {
+      this.regCmd('createFolder', async (treeItem?: BlueByrdTreeItem) => {
         const state = this.stateManager.getState();
         let targetCollectionId = treeItem?.kind === 'collection' ? treeItem.itemId : undefined;
 
@@ -843,13 +916,54 @@ export class CommandManager {
     };
 
     s.push(
-      vscode.commands.registerCommand('blueByrdApiClient.cloneRequest', cloneRequestHandler),
-      vscode.commands.registerCommand('blueByrdApiClient.duplicateRequest', cloneRequestHandler)
+      this.regCmd('cloneRequest', cloneRequestHandler),
+      this.regCmd('duplicateRequest', cloneRequestHandler)
+    );
+
+    // Rename Request
+    s.push(
+      this.regCmd('renameRequest', async (arg?: BlueByrdTreeItem | { id?: string; requestId?: string; name?: string }) => {
+        let requestId: string | undefined;
+        let currentName: string = '';
+
+        if (arg instanceof BlueByrdTreeItem) {
+          requestId = arg.itemId;
+          currentName = typeof arg.label === 'string' ? arg.label : '';
+        } else if (arg && typeof arg === 'object') {
+          requestId = arg.requestId || arg.id;
+          currentName = arg.name || '';
+        }
+
+        if (!requestId) return;
+
+        const found = this.stateManager.getRequest(requestId);
+        if (!found) {
+          vscode.window.showErrorMessage('Request not found.');
+          return;
+        }
+
+        currentName = currentName || found.request.name;
+
+        const newName = await vscode.window.showInputBox({
+          prompt: 'Enter new name for the request',
+          value: currentName,
+          validateInput: (v) => (!v.trim() ? 'Request name cannot be empty.' : null),
+        });
+
+        if (!newName || newName.trim() === currentName) return;
+
+        const renamed = this.stateManager.renameRequest(requestId, newName.trim());
+        if (renamed) {
+          this.treeProvider.refresh();
+          BlueByrdPanel.notifyRequestRenamed(requestId, renamed.name);
+          vscode.window.showInformationMessage(`Request renamed to '${renamed.name}'.`);
+        }
+      })
     );
 
     // Move Item Up (Reordering Collections, Folders, and Requests)
     s.push(
-      vscode.commands.registerCommand('blueByrdApiClient.moveItemUp', (treeItem?: BlueByrdTreeItem) => {
+      this.regCmd('moveItemUp', (treeItem?: BlueByrdTreeItem) => {
         if (!treeItem || !treeItem.itemId) return;
         const moved = this.stateManager.moveItemUp(treeItem.kind, treeItem.itemId, treeItem.parentId);
         if (moved) {
@@ -860,7 +974,7 @@ export class CommandManager {
 
     // Move Item Down (Reordering Collections, Folders, and Requests)
     s.push(
-      vscode.commands.registerCommand('blueByrdApiClient.moveItemDown', (treeItem?: BlueByrdTreeItem) => {
+      this.regCmd('moveItemDown', (treeItem?: BlueByrdTreeItem) => {
         if (!treeItem || !treeItem.itemId) return;
         const moved = this.stateManager.moveItemDown(treeItem.kind, treeItem.itemId, treeItem.parentId);
         if (moved) {
@@ -871,7 +985,7 @@ export class CommandManager {
 
     // Move Request To (QuickPick selector for moving requests across folders and collections)
     s.push(
-      vscode.commands.registerCommand('blueByrdApiClient.moveRequestTo', async (treeItem?: BlueByrdTreeItem) => {
+      this.regCmd('moveRequestTo', async (treeItem?: BlueByrdTreeItem) => {
         const reqId = treeItem?.itemId;
         if (!reqId) return;
 
@@ -916,7 +1030,7 @@ export class CommandManager {
 
     // Move Folder To (QuickPick selector for moving folders across collections)
     s.push(
-      vscode.commands.registerCommand('blueByrdApiClient.moveFolderTo', async (treeItem?: BlueByrdTreeItem) => {
+      this.regCmd('moveFolderTo', async (treeItem?: BlueByrdTreeItem) => {
         const folderId = treeItem?.itemId;
         if (!folderId) return;
 
@@ -947,7 +1061,7 @@ export class CommandManager {
 
     // Delete Item
     s.push(
-      vscode.commands.registerCommand('blueByrdApiClient.deleteItem', async (treeItem?: BlueByrdTreeItem) => {
+      this.regCmd('deleteItem', async (treeItem?: BlueByrdTreeItem) => {
         if (!treeItem || !treeItem.itemId) return;
 
         const confirm = await vscode.window.showWarningMessage(
@@ -969,7 +1083,7 @@ export class CommandManager {
 
     // Edit Settings Commands
     s.push(
-      vscode.commands.registerCommand('blueByrdApiClient.editProfile', (arg?: BlueByrdTreeItem | { id?: string; name?: string } | string) => {
+      this.regCmd('editProfile', (arg?: BlueByrdTreeItem | { id?: string; name?: string } | string) => {
         let profileId: string | undefined;
         let profileName: string | undefined;
 
@@ -991,14 +1105,15 @@ export class CommandManager {
             profile.name,
             this.stateManager,
             undefined,
-            profile.id
+            profile.id,
+            this.tokenService
           );
         }
       })
     );
 
     s.push(
-      vscode.commands.registerCommand('blueByrdApiClient.editEnvironment', (arg?: BlueByrdTreeItem | { id?: string; name?: string } | string) => {
+      this.regCmd('editEnvironment', (arg?: BlueByrdTreeItem | { id?: string; name?: string } | string) => {
         let envId: string | undefined;
         let envName: string | undefined;
 
@@ -1021,14 +1136,15 @@ export class CommandManager {
             resolvedName,
             this.stateManager,
             undefined,
-            env.id
+            env.id,
+            this.tokenService
           );
         }
       })
     );
 
     s.push(
-      vscode.commands.registerCommand('blueByrdApiClient.editCollection', (arg?: BlueByrdTreeItem | { id?: string; name?: string } | string) => {
+      this.regCmd('editCollection', (arg?: BlueByrdTreeItem | { id?: string; name?: string } | string) => {
         let colId: string | undefined;
         let colName: string | undefined;
 
@@ -1050,14 +1166,15 @@ export class CommandManager {
             col.name,
             this.stateManager,
             undefined,
-            col.id
+            col.id,
+            this.tokenService
           );
         }
       })
     );
 
     s.push(
-      vscode.commands.registerCommand('blueByrdApiClient.editFolder', (arg?: BlueByrdTreeItem | { collection?: string; folder?: string; collectionId?: string; folderId?: string }) => {
+      this.regCmd('editFolder', (arg?: BlueByrdTreeItem | { collection?: string; folder?: string; collectionId?: string; folderId?: string }) => {
         let folderId: string | undefined;
         let folderName: string | undefined;
         let colIdOrName: string | undefined;
@@ -1080,14 +1197,15 @@ export class CommandManager {
           folderName || 'Folder',
           this.stateManager,
           colName,
-          folderId
+          folderId,
+          this.tokenService
         );
       })
     );
 
     // Import JSON (Postman, OpenAPI, bluebyrd Collection/Environment/Backup)
     s.push(
-      vscode.commands.registerCommand('blueByrdApiClient.importJson', async () => {
+      this.regCmd('importJson', async () => {
         try {
           const uris = await vscode.window.showOpenDialog({
             canSelectMany: false,
@@ -1181,9 +1299,77 @@ export class CommandManager {
       })
     );
 
+    // Import from cURL Command
+    s.push(
+      this.regCmd('importCurl', async () => {
+        const rawCurl = await vscode.window.showInputBox({
+          prompt: 'Paste a cURL command to import into a new request panel',
+          placeHolder: 'curl -X POST https://api.example.com/v1/resource -H "Content-Type: application/json" -d \'{"key":"value"}\'',
+          ignoreFocusOut: true,
+          validateInput: (value) => {
+            if (!value || !value.trim()) {
+              return 'Please enter a cURL command.';
+            }
+            if (!value.trim().toLowerCase().startsWith('curl')) {
+              return 'Command must start with "curl".';
+            }
+            return null;
+          },
+        });
+
+        if (!rawCurl || !rawCurl.trim()) return;
+
+        try {
+          const parsed = ImportExportService.parseCurl(rawCurl.trim());
+          const state = this.stateManager.getState();
+          const activeProfile = state.activeProfileId && state.activeProfileId !== 'all'
+            ? this.stateManager.getProfile(state.activeProfileId)
+            : state.profiles[0];
+          const activeEnv = state.activeEnvironmentName || Object.keys(state.environments)[0] || 'Local';
+
+          // Derive request name from URL pathname if available
+          let requestName = `${parsed.method} Request`;
+          try {
+            if (parsed.url.startsWith('http://') || parsed.url.startsWith('https://')) {
+              const u = new URL(parsed.url);
+              const pathEnd = u.pathname.split('/').filter(Boolean).pop();
+              if (pathEnd) {
+                requestName = `${parsed.method} ${pathEnd}`;
+              }
+            }
+          } catch {
+            // fallback name
+          }
+
+          BlueByrdPanel.createOrShow(
+            this.context.extensionUri,
+            {
+              profile: activeProfile?.name || 'Default',
+              profileId: activeProfile?.id,
+              environment: activeEnv,
+              collection: state.collections[0]?.name || 'Demo Collection',
+              requestName,
+              method: parsed.method,
+              url: parsed.url,
+              headers: parsed.headers,
+              body: parsed.body,
+              bodyType: parsed.bodyType,
+            },
+            this.stateManager,
+            this.httpService,
+            this.variableService,
+            this.authService,
+            this.tokenService
+          );
+        } catch (err: any) {
+          vscode.window.showErrorMessage(`Failed to import cURL: ${err?.message || 'Unknown error'}`);
+        }
+      })
+    );
+
     // Export Collection as JSON
     s.push(
-      vscode.commands.registerCommand('blueByrdApiClient.exportCollection', async (arg?: BlueByrdTreeItem | { id?: string; name?: string }) => {
+      this.regCmd('exportCollection', async (arg?: BlueByrdTreeItem | { id?: string; name?: string }) => {
         try {
           const state = this.stateManager.getState();
           let targetCollectionId: string | undefined;
@@ -1210,7 +1396,7 @@ export class CommandManager {
 
           const exportJson = ImportExportService.exportCollection(col);
           const slug = col.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'collection';
-          const defaultUri = vscode.Uri.file(`${slug}.bluebyrd-collection.json`);
+          const defaultUri = vscode.Uri.file(`${slug}.byrdsnest-collection.json`);
 
           const targetUri = await vscode.window.showSaveDialog({
             defaultUri,
@@ -1230,7 +1416,7 @@ export class CommandManager {
 
     // Export Environment as JSON
     s.push(
-      vscode.commands.registerCommand('blueByrdApiClient.exportEnvironment', async (arg?: BlueByrdTreeItem | { id?: string; name?: string }) => {
+      this.regCmd('exportEnvironment', async (arg?: BlueByrdTreeItem | { id?: string; name?: string }) => {
         try {
           const state = this.stateManager.getState();
           let targetEnvName: string | undefined;
@@ -1280,12 +1466,12 @@ export class CommandManager {
 
     // Export Full Workspace Backup as JSON
     s.push(
-      vscode.commands.registerCommand('blueByrdApiClient.exportBackup', async () => {
+      this.regCmd('exportBackup', async () => {
         try {
           const state = this.stateManager.getState();
           const exportJson = ImportExportService.exportBackup(state);
           const dateStr = new Date().toISOString().slice(0, 10);
-          const defaultUri = vscode.Uri.file(`bluebyrd-backup-${dateStr}.json`);
+          const defaultUri = vscode.Uri.file(`byrdsnest-backup-${dateStr}.json`);
 
           const targetUri = await vscode.window.showSaveDialog({
             defaultUri,
@@ -1305,7 +1491,7 @@ export class CommandManager {
 
     // Check for Updates
     s.push(
-      vscode.commands.registerCommand('blueByrdApiClient.checkForUpdates', async () => {
+      this.regCmd('checkForUpdates', async () => {
         await this.updateService.checkForUpdates(true);
       })
     );

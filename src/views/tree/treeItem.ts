@@ -41,7 +41,7 @@ export class BlueByrdTreeItem extends vscode.TreeItem {
 
     this.id = itemId ? `${kind}-${itemId}` : undefined;
     this.command = command;
-    this.contextValue = `bluebyrd.${kind}`;
+    this.contextValue = `byrdsnest.${kind}`;
 
     if (customDescription !== undefined) {
       this.description = customDescription;
@@ -49,7 +49,7 @@ export class BlueByrdTreeItem extends vscode.TreeItem {
 
     if (kind === 'active-filter') {
       this.iconPath = new vscode.ThemeIcon('filter');
-      this.contextValue = 'bluebyrd.activeFilter';
+      this.contextValue = 'byrdsnest.activeFilter';
       if (customDescription === undefined) {
         this.description = '(click to switch)';
       }
@@ -58,20 +58,20 @@ export class BlueByrdTreeItem extends vscode.TreeItem {
       this.collapsibleState = defaultCollapsibleState ?? vscode.TreeItemCollapsibleState.Expanded;
       if (label === 'Profiles') {
         this.iconPath = new vscode.ThemeIcon('account');
-        this.contextValue = 'bluebyrd.section.profiles';
+        this.contextValue = 'byrdsnest.section.profiles';
       } else if (label === 'Environments') {
         this.iconPath = new vscode.ThemeIcon('server-environment');
-        this.contextValue = 'bluebyrd.section.environments';
+        this.contextValue = 'byrdsnest.section.environments';
       } else if (label === 'Collections') {
         this.iconPath = new vscode.ThemeIcon('library');
-        this.contextValue = 'bluebyrd.section.collections';
+        this.contextValue = 'byrdsnest.section.collections';
       } else if (label === 'History') {
         this.iconPath = new vscode.ThemeIcon('history');
-        this.contextValue = 'bluebyrd.section.history';
+        this.contextValue = 'byrdsnest.section.history';
       }
     } else if (kind === 'profile') {
       this.iconPath = itemId === 'global' ? new vscode.ThemeIcon('globe') : new vscode.ThemeIcon('person');
-      this.contextValue = itemId === 'global' ? 'bluebyrd.profile.global' : 'bluebyrd.profile';
+      this.contextValue = itemId === 'global' ? 'byrdsnest.profile.global' : 'byrdsnest.profile';
       if (customDescription === undefined) {
         this.description = 'profile';
       }
@@ -79,7 +79,7 @@ export class BlueByrdTreeItem extends vscode.TreeItem {
     } else if (kind === 'environment') {
       const isParent = children.length > 0;
       this.iconPath = isParent ? new vscode.ThemeIcon('server-process') : new vscode.ThemeIcon('globe');
-      this.contextValue = isParent ? 'bluebyrd.environment.parent' : 'bluebyrd.environment';
+      this.contextValue = isParent ? 'byrdsnest.environment.parent' : 'byrdsnest.environment';
       if (customDescription === undefined) {
         this.description = isParent ? `Parent (${children.length})` : 'env';
       }
@@ -113,13 +113,13 @@ export class BlueByrdTreeItem extends vscode.TreeItem {
         this.description = method;
       }
       this.tooltip = `${method} ${requestContext?.url || label}`;
-      this.contextValue = 'bluebyrd.historyItem';
+      this.contextValue = 'byrdsnest.historyItem';
     } else if (kind === 'token') {
       this.iconPath = new vscode.ThemeIcon('key');
-      this.contextValue = 'bluebyrd.token';
+      this.contextValue = 'byrdsnest.token';
     } else if (kind === 'noTokens') {
       this.iconPath = new vscode.ThemeIcon('info');
-      this.contextValue = 'bluebyrd.noTokens';
+      this.contextValue = 'byrdsnest.noTokens';
     }
   }
 }

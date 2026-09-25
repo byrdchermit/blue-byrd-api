@@ -112,7 +112,8 @@ export class BlueByrdEnvironmentsTreeProvider
       }
       if (isParent) {
         descParts.push(`Parent (${childNodes.length})`);
-      } else if (env.inheritsFrom) {
+      }
+      if (env.inheritsFrom) {
         const p = envById.get(env.inheritsFrom) || envByName.get(env.inheritsFrom);
         descParts.push(`inherits: ${p?.name || env.inheritsFrom}`);
       }
@@ -130,7 +131,7 @@ export class BlueByrdEnvironmentsTreeProvider
         childNodes,
         {
           title: 'Set as Active Environment',
-          command: 'blueByrdApiClient.setActiveEnvironment',
+          command: 'byrdsnestApiClient.setActiveEnvironment',
           arguments: [{ name, id: env.id }],
         },
         desc,

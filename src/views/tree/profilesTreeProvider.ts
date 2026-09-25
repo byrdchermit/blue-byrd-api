@@ -60,7 +60,7 @@ export class BlueByrdProfilesTreeProvider
         [],
         {
           title: 'Select Profile Scope',
-          command: 'blueByrdApiClient.setActiveProfile',
+          command: 'byrdsnestApiClient.setActiveProfile',
           arguments: [{ id: p.id, name: p.name }],
         },
         desc,
@@ -86,7 +86,7 @@ export class BlueByrdProfilesTreeProvider
       [],
       {
         title: 'Select Profile Scope',
-        command: 'blueByrdApiClient.setActiveProfile',
+        command: 'byrdsnestApiClient.setActiveProfile',
         arguments: [{ id: 'global', name: 'Shared / Global' }],
       },
       isGlobalActive ? '✔ Active' : 'Shared across all profiles',

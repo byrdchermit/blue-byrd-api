@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
-import { Collection, CollectionFolder, EnvironmentConfig, Profile, ProfileAuth } from '../../types';
+import { Collection, CollectionFolder, EnvironmentConfig, Profile, ProfileAuth, StoredToken } from '../../types';
 import { BlueByrdStateManager } from '../../state/stateManager';
+import { TokenService } from '../../services/tokenService';
 import { getSettingsPanelHtml } from './settingsPanelHtml';
 
 export class BlueByrdSettingsPanel {
@@ -10,6 +11,7 @@ export class BlueByrdSettingsPanel {
 
   private readonly panel: vscode.WebviewPanel;
   private readonly stateManager: BlueByrdStateManager;
+  private readonly tokenService?: TokenService;
   private readonly target: 'profile' | 'environment' | 'collection' | 'folder';
   private readonly originalName: string;
   private readonly originalId?: string;
@@ -30,7 +32,8 @@ export class BlueByrdSettingsPanel {
     name: string,
     stateManager: BlueByrdStateManager,
     collectionName?: string,
-    itemId?: string
+    itemId?: string,
+    tokenService?: TokenService
   ): void {
     try {
       const key = this.getPanelKey(target, itemId || name, collectionName);
@@ -65,13 +68,14 @@ export class BlueByrdSettingsPanel {
         name,
         stateManager,
         collectionName,
-        itemId
+        itemId,
+        tokenService
       );
 
       this.panels.set(key, instance);
       this.currentPanel = instance;
     } catch (err) {
-      console.error('[bluebyrd] Failed to open settings panel:', err);
+      console.error('[byrdsnest api client] Failed to open settings panel:', err);
       vscode.window.showErrorMessage(`Failed to open settings: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
@@ -82,7 +86,8 @@ export class BlueByrdSettingsPanel {
     name: string,
     stateManager: BlueByrdStateManager,
     collectionName?: string,
-    itemId?: string
+    itemId?: string,
+    tokenService?: TokenService
   ) {
     this.panel = panel;
     this.target = target;
@@ -90,6 +95,7 @@ export class BlueByrdSettingsPanel {
     this.originalId = itemId;
     this.collectionName = collectionName;
     this.stateManager = stateManager;
+    this.tokenService = tokenService;
 
     const item = this.resolveItem();
     const allEnvironments = Object.entries(this.stateManager.getEnvironments()).map(([name, env]) => ({
@@ -100,7 +106,21 @@ export class BlueByrdSettingsPanel {
       id: p.id,
       name: p.name,
     }));
-    this.panel.webview.html = getSettingsPanelHtml(target, item, name, collectionName, allEnvironments, allProfiles);
+
+    const profileId = this.target === 'profile' ? (this.originalId || 'global') : this.stateManager.getActiveProfileId();
+    const availableTokens = this.tokenService
+      ? this.tokenService.getAllTokens().filter((t) => t.profileId === profileId || t.profileId === 'global')
+      : [];
+
+    this.panel.webview.html = getSettingsPanelHtml(
+      target,
+      item,
+      name,
+      collectionName,
+      allEnvironments,
+      allProfiles,
+      availableTokens
+    );
 
     this.panel.onDidDispose(
       () => {
@@ -123,7 +143,7 @@ export class BlueByrdSettingsPanel {
     );
 
     this.panel.webview.onDidReceiveMessage(
-      (message) => {
+      async (message) => {
         if (message.type === 'cancel') {
           this.panel.dispose();
           return;
@@ -131,6 +151,36 @@ export class BlueByrdSettingsPanel {
 
         if (message.type === 'saveSettings') {
           this.handleSave(message.payload);
+        } else if (message.type === 'saveTokenToVault') {
+          if (this.tokenService && message.payload?.token) {
+            const activePid = (this.target === 'profile' ? (this.originalId || 'global') : this.stateManager.getActiveProfileId()) || 'global';
+            const prof = this.stateManager.getProfile(activePid);
+            const envName = this.target === 'environment' ? this.originalName : (message.payload.envName || '');
+            const env = this.target === 'environment' ? (this.resolveItem() as EnvironmentConfig) : (envName ? this.stateManager.getEnvironment(envName) : undefined);
+            const newToken: StoredToken = {
+              id: `tok-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+              profileId: activePid,
+              profileName: prof?.name || 'Default Profile',
+              envName: envName || undefined,
+              envId: env?.id,
+              tokenName: message.payload.name || `${this.originalName || 'Stored'} Token`,
+              accessToken: message.payload.token,
+              tokenType: 'Bearer',
+              createdAt: Date.now(),
+              expiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000,
+              source: 'manual',
+              sourceUrl: message.payload.sourceUrl || env?.baseUrl,
+              clientId: message.payload.clientId,
+            };
+            await this.tokenService.saveToken(newToken);
+            vscode.window.showInformationMessage(`Token "${newToken.tokenName}" saved to vault.`);
+            const updatedTokens = await this.tokenService.getTokens(activePid);
+            this.panel.webview.postMessage({
+              type: 'tokensUpdated',
+              tokens: updatedTokens,
+              selectedId: newToken.id,
+            });
+          }
         }
       },
       null,
@@ -172,6 +222,7 @@ export class BlueByrdSettingsPanel {
     tokenUrl?: string;
     scopes?: string[];
     grantType?: string;
+    selectedTokenId?: string;
     inheritAuth?: boolean;
     variables: Record<string, string>;
     headers?: Record<string, string>;
@@ -194,6 +245,7 @@ export class BlueByrdSettingsPanel {
       tokenUrl: payload.tokenUrl,
       scopes: payload.scopes,
       grantType: payload.grantType as any,
+      selectedTokenId: payload.selectedTokenId,
     };
 
     if (this.target === 'profile') {
@@ -258,7 +310,7 @@ export class BlueByrdSettingsPanel {
     }
 
     vscode.window.showInformationMessage(`${this.target.toUpperCase()} settings saved.`);
-    vscode.commands.executeCommand('blueByrdApiClient.refreshExplorer');
+    vscode.commands.executeCommand('byrdsnestApiClient.refreshExplorer');
     try {
       this.panel.title = `${nextName} Settings`;
     } catch {

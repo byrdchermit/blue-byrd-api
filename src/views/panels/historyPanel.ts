@@ -119,7 +119,7 @@ export class BlueByrdHistoryPanel {
             case 'openInEditor': {
               const item = message.item as RecentRequest;
               // Open a new request editor populated with this historical run
-              await vscode.commands.executeCommand('blueByrdApiClient.openRequestPanel', {
+              await vscode.commands.executeCommand('byrdsnestApiClient.openRequestPanel', {
                 id: `replay-${Date.now()}`,
                 requestName: item.name ? `${item.name} (Replay)` : `${item.method} ${item.url}`,
                 method: item.method,
@@ -169,7 +169,7 @@ export class BlueByrdHistoryPanel {
               };
 
               this.stateManager.saveRequest(newReq, targetCol?.id, targetFolder?.id);
-              vscode.commands.executeCommand('blueByrdApiClient.refreshExplorer');
+              vscode.commands.executeCommand('byrdsnestApiClient.refreshExplorer');
               vscode.window.showInformationMessage(
                 `Saved "${reqName}" to ${targetCol?.name}${targetFolder ? ' › ' + targetFolder.name : ''}!`
               );
@@ -186,7 +186,7 @@ export class BlueByrdHistoryPanel {
               const id = message.historyId;
               this.stateManager.deleteHistoryItem(id);
               this.panel.webview.postMessage({ type: 'itemDeleted', historyId: id });
-              vscode.commands.executeCommand('blueByrdApiClient.refreshExplorer');
+              vscode.commands.executeCommand('byrdsnestApiClient.refreshExplorer');
               break;
             }
 
@@ -199,7 +199,7 @@ export class BlueByrdHistoryPanel {
               if (confirm === 'Clear History') {
                 this.stateManager.clearHistory();
                 this.panel.webview.postMessage({ type: 'historyCleared' });
-                vscode.commands.executeCommand('blueByrdApiClient.refreshExplorer');
+                vscode.commands.executeCommand('byrdsnestApiClient.refreshExplorer');
                 vscode.window.showInformationMessage('Request history cleared.');
               }
               break;

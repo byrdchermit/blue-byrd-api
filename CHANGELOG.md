@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to **bluebyrd** will be documented in this file.
+All notable changes to **byrdsnest api client** will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -9,7 +9,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.2.0] - 2026-09-24
+## [0.3.0] - 2026-09-25
+
+### Added
+- **Token Vault Selector & Full Provenance Tracking**:
+  - Direct selection of stored tokens from the profile vault within the Authentication tab for Bearer and OAuth 2.0.
+  - Interactive **Token Provenance Card** displaying origin environment/source, endpoint URL, OAuth client ID, acquisition timestamp, remaining expiry countdown, and granted scopes.
+  - One-click **"Save Current Token to Vault"** action saving newly entered or minted tokens directly into the vault for cross-request reuse.
+  - Automatic `selectedTokenId` resolution in `AuthService` when dispatching requests.
+- **Bird's Nest Brand Icon**:
+  - High-resolution SVG and PNG icon featuring an interwoven bird's nest bowl with glowing digital API data eggs and network node insignia.
+
+### Changed
+- **Cohesive Full-Width Layout**:
+  - Harmonized Settings and Environment panels to match the Request Panel layout: edge-to-edge full width, unified 14px padding, matching context bar pills, action buttons, tab headers, input borders, and checkbox accents.
+- **Parent-Child Environment Hierarchy Visuals**:
+  - Visual tree indentation and nesting of child environments under parent environments in the sidebar.
+  - Dropdown hierarchy indicators annotating inheritance paths and child counts.
+- **Breadcrumb Request Renaming**:
+  - In-place request rename field in the top breadcrumb bar with instant synchronization.
+- **Dynamic Variables Default Collapse**:
+  - Built-in dynamic variables collapsed by default with on-demand toggle control.
+
+---
+
+## [0.2.0] - 2026-09-25
+
+### Changed
+- **Rebrand to "byrdsnest api client"**:
+  - Full project rename to **byrdsnest api client** across package name (`byrdsnest-api-client`), display name, Activity Bar container (`byrdsnestApiClient`), command IDs (`byrdsnestApiClient.*`), view IDs (`byrdsnestProfiles`, `byrdsnestCollections`, `byrdsnestEnvironments`, `byrdsnestTools`), and documentation.
+  - Automatic zero-friction state migration: seamlessly imports and preserves existing `blue-byrd-state` workspace state and `bluebyrd.tokens` OAuth token vaults into `byrdsnest-api-state` and `byrdsnest.tokens`.
+  - Comprehensive backward compatibility aliases: legacy `blueByrdApiClient.*` commands, context values, and backup formats continue to function without interruption.
+- **Dedicated Tools Sidebar Accordion**:
+  - Renamed the bottom accordion from "History" to **Tools** (`byrdsnestTools`), bundling quick-access developer actions: History Inspector, OAuth Token Vault, Import from cURL, Import API Data, Export Full Backup, and Check for Updates.
 
 ### Added
 - **Pre-Request & Post-Response Scripting Engine**:

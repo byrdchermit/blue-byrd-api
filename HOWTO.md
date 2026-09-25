@@ -1,6 +1,6 @@
-# bluebyrd User Guide (HOWTO)
+# byrdsnest api client User Guide (HOWTO)
 
-Welcome to the **bluebyrd** user guide! This document provides an end-to-end walkthrough on how to use bluebyrd for building, testing, and managing APIs directly inside Visual Studio Code.
+Welcome to the **byrdsnest api client** user guide! This document provides an end-to-end walkthrough on how to use byrdsnest api client for building, testing, and managing APIs directly inside Visual Studio Code.
 
 ---
 
@@ -24,41 +24,41 @@ Welcome to the **bluebyrd** user guide! This document provides an end-to-end wal
 
 ### Installing the `.vsix` Package
 
-You can install bluebyrd directly from the packaged `.vsix` bundle:
+You can install byrdsnest api client directly from the packaged `.vsix` bundle:
 
 #### Option A: Inside VS Code
 1. Open Visual Studio Code.
 2. Open the Extensions view (`Ctrl+Shift+X` on Windows/Linux, `Cmd+Shift+X` on macOS).
 3. Click the **`...`** (Views and More Actions) menu in the top-right corner of the Extensions pane.
 4. Select **Install from VSIX...**.
-5. Select the `blue-byrd-api-0.1.0.vsix` file.
+5. Select the `byrdsnest-api-client-0.1.0.vsix` file.
 
 #### Option B: From the Terminal
 Run the following command in your terminal:
 ```bash
-code --install-extension blue-byrd-api-0.1.0.vsix
+code --install-extension byrdsnest-api-client-0.1.0.vsix
 ```
 
 ### Downloading Releases
 New versions and pre-packaged VSIX files are published on the GitHub Releases page:
-👉 [https://github.com/byrdchermit/blue-byrd-api/releases](https://github.com/byrdchermit/blue-byrd-api/releases)
+👉 [https://github.com/byrdchermit/byrdsnest-api-client/releases](https://github.com/byrdchermit/byrdsnest-api-client/releases)
 
 ---
 
 ## 2. Interface Overview
 
-Once installed, bluebyrd adds an icon to your VS Code **Activity Bar** (left sidebar):
+Once installed, byrdsnest api client adds an icon to your VS Code **Activity Bar** (left sidebar):
 
 1. **Collections Tree**: View, create, and organize your API requests inside nested folders and collections.
 2. **Environments Tree**: View and activate environments (e.g. `Development`, `Staging`, `Production`) and profiles.
 3. **Request History**: Browse your recent API executions, complete with status codes, latency, and single-click restoration.
-4. **Editor Tabs**: When you click a request or environment, bluebyrd opens a native tab in your editor where you can edit and execute.
+4. **Editor Tabs**: When you click a request or environment, byrdsnest api client opens a native tab in your editor where you can edit and execute.
 
 ---
 
 ## 3. Profiles & Environments
 
-bluebyrd features an advanced multi-tier configuration system: **Profiles**, **Hierarchical Environments**, and **Profile Scopes**.
+byrdsnest api client features an advanced multi-tier configuration system: **Profiles**, **Hierarchical Environments**, and **Profile Scopes**.
 
 ### Profiles
 A **Profile** represents global context that can own or scope environments and collections (such as specific customer tenants, microservice domains, or organizational accounts).
@@ -69,13 +69,13 @@ A **Profile** represents global context that can own or scope environments and c
 ### Environments & Visual Parent → Child Nesting
 An **Environment** represents a specific deployment target (such as `Base`, `Dev`, `Staging`, or `Production`).
 
-- **Hierarchical Visual Nesting**: When an environment sets a **Parent Environment** (`inheritsFrom`), bluebyrd automatically nests the child environment directly beneath the parent in the sidebar explorer tree with collapsible expansion chevrons, parent badges (`Parent (N)`), and child badges (`inherits: <parent>`).
+- **Hierarchical Visual Nesting**: When an environment sets a **Parent Environment** (`inheritsFrom`), byrdsnest api client automatically nests the child environment directly beneath the parent in the sidebar explorer tree with collapsible expansion chevrons, parent badges (`Parent (N)`), and child badges (`inherits: <parent>`).
 - **Multi-Level Inheritance**: Inheritance works recursively (e.g. `Base` → `Staging` → `Staging-Feature`). Child environments inherit all parent variables and headers while selectively overriding specific keys or base URLs.
 - **Active Environment Indicator**: The active environment displays a `✔ Active` badge in the sidebar. You can set any environment as active via its inline checkmark button or right-click context menu.
 
 ### Creating & Scoping Profiles and Environments
 1. **From the Sidebar**: Hover over the **Profiles** or **Environments** header in the sidebar and click the **`+`** icon.
-2. **From the Command Palette**: Press `Ctrl+Shift+P` (or `Cmd+Shift+P`), type `bluebyrd: New Profile` or `bluebyrd: New Environment`, and press Enter.
+2. **From the Command Palette**: Press `Ctrl+Shift+P` (or `Cmd+Shift+P`), type `byrdsnest api client: New Profile` or `byrdsnest api client: New Environment`, and press Enter.
 3. The editor tab opens automatically, allowing you to define:
    - Key-value variable pairs.
    - Default headers.
@@ -114,7 +114,7 @@ An **Environment** represents a specific deployment target (such as `Base`, `Dev
 
 ## 5. Variable & Header Inheritance
 
-bluebyrd uses a 6-tier inheritance engine that resolves variables and headers in the following cascading order:
+byrdsnest api client uses a 6-tier inheritance engine that resolves variables and headers in the following cascading order:
 
 > **Profile** → **Parent Environment** → **Active Environment** → **Collection** → **Folder** → **Request**
 
@@ -140,7 +140,7 @@ You can use dynamic tokens anywhere in your URLs, headers, or body payloads:
 | `{{$date:format}}` | Date formatted with tokens (`yyyy`, `MM`, `dd`, `HH`, `mm`, `ss`) | `{{$date:yyyy-MM-dd}}` → `2026-09-24` |
 
 ### Smart JSON Type Coercion
-When writing JSON payloads, wrapping variables in quotes often causes string/boolean mismatch issues. bluebyrd automatically detects when a quoted variable resolves to a boolean or null value and coerces it:
+When writing JSON payloads, wrapping variables in quotes often causes string/boolean mismatch issues. byrdsnest api client automatically detects when a quoted variable resolves to a boolean or null value and coerces it:
 ```json
 // Input template:
 {
@@ -148,7 +148,7 @@ When writing JSON payloads, wrapping variables in quotes often causes string/boo
   "meta": "{{EXTRA_DATA}}"
 }
 
-// If IS_PROD = "true" and EXTRA_DATA = "null", bluebyrd sends:
+// If IS_PROD = "true" and EXTRA_DATA = "null", byrdsnest api client sends:
 {
   "active": true,
   "meta": null
@@ -159,7 +159,7 @@ When writing JSON payloads, wrapping variables in quotes often causes string/boo
 
 ## 7. Authentication
 
-bluebyrd provides a unified authentication engine across Requests, Collections, Profiles, and Environments:
+byrdsnest api client provides a unified authentication engine across Requests, Collections, Profiles, and Environments:
 
 ### Supported Auth Types
 
@@ -177,7 +177,7 @@ bluebyrd provides a unified authentication engine across Requests, Collections, 
 ## 8. Collections & Folders
 
 Organize your endpoints logically into nested structures:
-- **Create Collection**: Click the **`+`** icon on the Collections header or run `bluebyrd: New Collection`.
+- **Create Collection**: Click the **`+`** icon on the Collections header or run `byrdsnest api client: New Collection`.
 - **Add Folder**: Hover over any collection and click **New Folder**. Folders can be nested indefinitely.
 - **Collection/Folder Defaults**: Open any collection or folder to set default headers and authentication that automatically cascade to every request inside.
 
@@ -185,7 +185,7 @@ Organize your endpoints logically into nested structures:
 
 ## 9. Universal JSON Import & Export
 
-bluebyrd makes it easy to migrate from other tools or share your workspaces with team members:
+byrdsnest api client makes it easy to migrate from other tools or share your workspaces with team members:
 
 ### Supported Formats
 - **Postman Collections (v2 / v2.1)**: Imports requests, folders, headers, query parameters, auth settings, and bodies.
@@ -197,15 +197,15 @@ bluebyrd makes it easy to migrate from other tools or share your workspaces with
 1. In the sidebar, click the **Import** icon on the Collections or Environments header.
 2. Or open the Command Palette (`Ctrl+Shift+P`) and run:
    ```
-   bluebyrd: Import JSON
+   byrdsnest api client: Import JSON
    ```
-3. Select your `.json` or `.yaml` file. bluebyrd automatically identifies the format and normalizes the contents.
+3. Select your `.json` or `.yaml` file. byrdsnest api client automatically identifies the format and normalizes the contents.
 
 ### How to Export
 1. Right-click any collection or hover over it to click the **Export** icon.
 2. Or use the Command Palette:
-   - `bluebyrd: Export Collection as JSON`
-   - `bluebyrd: Export Full Workspace Backup as JSON`
+   - `byrdsnest api client: Export Collection as JSON`
+   - `byrdsnest api client: Export Full Workspace Backup as JSON`
 3. Save the exported JSON file to your desired location.
 
 ---
@@ -227,10 +227,10 @@ Every executed request is automatically recorded in the **History** view in the 
 
 ## 11. Checking for Updates
 
-bluebyrd includes an automated update checking system:
+byrdsnest api client includes an automated update checking system:
 
 ### Automatic Checks
-Once per day upon starting VS Code, bluebyrd checks the official GitHub repository for new releases. If a newer version is found, an interactive notification appears:
+Once per day upon starting VS Code, byrdsnest api client checks the official GitHub repository for new releases. If a newer version is found, an interactive notification appears:
 - **Download Update**: Opens the GitHub release download page directly.
 - **View Changelog**: Opens the release notes and changelog.
 
@@ -239,6 +239,6 @@ You can check for updates on demand at any time:
 1. Open the Command Palette (`Ctrl+Shift+P` or `Cmd+Shift+P`).
 2. Search for:
    ```
-   bluebyrd: Check for Updates
+   byrdsnest api client: Check for Updates
    ```
-3. Press Enter. bluebyrd will notify you if your installation is up to date or if a new version is available.
+3. Press Enter. byrdsnest api client will notify you if your installation is up to date or if a new version is available.

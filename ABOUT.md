@@ -1,12 +1,12 @@
-# About bluebyrd (Beta)
+# About byrdsnest api client (Beta)
 
-**bluebyrd** is an open-source, local-first API client built natively for Visual Studio Code, currently in Public Beta.
+**byrdsnest api client** is an open-source, local-first API client built natively for Visual Studio Code, currently in Public Beta.
 
-Designed for developers who want a fast, focused, and intuitive API workbench without leaving their code editor, bluebyrd combines the power of tools like Postman with the simplicity, speed, and privacy of VS Code.
+Designed for developers who want a fast, focused, and intuitive API workbench without leaving their code editor, byrdsnest api client combines the power of tools like Postman with the simplicity, speed, and privacy of VS Code.
 
 ---
 
-## The Story Behind bluebyrd
+## The Story Behind byrdsnest api client
 
 Over the years, API clients have evolved from simple HTTP request tools into heavyweight desktop platforms. While feature-rich, many modern tools have introduced:
 
@@ -15,35 +15,35 @@ Over the years, API clients have evolved from simple HTTP request tools into hea
 - Cloud syncing of sensitive API keys, tokens, and corporate payloads.
 - Constant context switching between the IDE and standalone desktop applications.
 
-**bluebyrd** was created by Byrd Chermit ([@byrdchermit](https://github.com/byrdchermit)) to solve this problem. The vision is simple: **bring a professional-grade, privacy-respecting, and lightning-fast API client directly into the developer's primary workspace.**
+**byrdsnest api client** was created by Byrd Chermit ([@byrdchermit](https://github.com/byrdchermit)) to solve this problem. The vision is simple: **bring a professional-grade, privacy-respecting, and lightning-fast API client directly into the developer's primary workspace.**
 
 ---
 
 ## Core Principles & Philosophy
 
 ### 1. 🔒 Local-First & Zero Telemetry
-Your API keys, environment credentials, authorization tokens, and request histories are sensitive. bluebyrd stores all data strictly within your local VS Code workspace and global extension storage. There are no proprietary cloud backends, no user tracking, and no external telemetry.
+Your API keys, environment credentials, authorization tokens, and request histories are sensitive. byrdsnest api client stores all data strictly within your local VS Code workspace and global extension storage. There are no proprietary cloud backends, no user tracking, and no external telemetry.
 
 ### 2. ⚡ Lightweight & Fast
-Built natively using the VS Code Extension API and webviews, bluebyrd launches instantly alongside your editor, uses negligible background memory, and does not require a standalone browser engine.
+Built natively using the VS Code Extension API and webviews, byrdsnest api client launches instantly alongside your editor, uses negligible background memory, and does not require a standalone browser engine.
 
 ### 3. 🧬 Hierarchical Precision (Inheritance Done Right)
-Managing variables and authentication across complex multi-service projects shouldn't require copy-pasting headers across dozens of requests. bluebyrd implements an end-to-end inheritance architecture:
+Managing variables and authentication across complex multi-service projects shouldn't require copy-pasting headers across dozens of requests. byrdsnest api client implements an end-to-end inheritance architecture:
 > **Profile** → **Parent Environment** → **Active Environment** → **Collection** → **Folder** → **Request**
 
 With the built-in **Visual Inheritance Inspector**, you can see the exact origin of every variable and header (`[Profile]`, `[Env]`, `[Collection]`), inspect overridden values, and override anything with a single click.
 
 ### 4. 🔄 Universal Interoperability (No Vendor Lock-In)
-Your collections and environments belong to you. bluebyrd features native, universal JSON import and export for:
+Your collections and environments belong to you. byrdsnest api client features native, universal JSON import and export for:
 - **Postman Collections (v2 / v2.1)**
 - **Postman Environments**
 - **OpenAPI 3.0 & Swagger 2.0 Specifications**
 - **Full Workspace Backups**
 
-You can migrate your existing workflows into bluebyrd in seconds, or export your work at any time.
+You can migrate your existing workflows into byrdsnest api client in seconds, or export your work at any time.
 
 ### 5. 🌐 Open Source & Community Driven
-bluebyrd is published under the permissive **MIT License** and developed openly on GitHub at [byrdchermit/blue-byrd-api](https://github.com/byrdchermit/blue-byrd-api). 
+byrdsnest api client is published under the permissive **MIT License** and developed openly on GitHub at [byrdchermit/byrdsnest-api-client](https://github.com/byrdchermit/byrdsnest-api-client). 
 
 ---
 
@@ -88,9 +88,9 @@ bluebyrd is published under the permissive **MIT License** and developed openly 
 
 ## Connect & Contribute
 
-- **Repository**: [https://github.com/byrdchermit/blue-byrd-api](https://github.com/byrdchermit/blue-byrd-api)
-- **Issues & Feature Requests**: [GitHub Issues](https://github.com/byrdchermit/blue-byrd-api/issues)
-- **Releases**: [GitHub Releases](https://github.com/byrdchermit/blue-byrd-api/releases)
+- **Repository**: [https://github.com/byrdchermit/byrdsnest-api-client](https://github.com/byrdchermit/byrdsnest-api-client)
+- **Issues & Feature Requests**: [GitHub Issues](https://github.com/byrdchermit/byrdsnest-api-client/issues)
+- **Releases**: [GitHub Releases](https://github.com/byrdchermit/byrdsnest-api-client/releases)
 - **Author**: Byrd Chermit ([@byrdchermit](https://github.com/byrdchermit))
-- **License**: [MIT](https://github.com/byrdchermit/blue-byrd-api/blob/main/LICENSE)
+- **License**: [MIT](https://github.com/byrdchermit/byrdsnest-api-client/blob/main/LICENSE)
 

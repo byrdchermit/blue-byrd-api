@@ -9,14 +9,14 @@ import {
   BlueByrdProfilesTreeProvider,
   BlueByrdCollectionsTreeProvider,
   BlueByrdEnvironmentsTreeProvider,
-  BlueByrdHistoryTreeProvider,
+  BlueByrdToolsTreeProvider,
   BlueByrdTreeCoordinator,
 } from './views/tree';
 import { CommandManager } from './commands/commandManager';
 
 export function activate(context: vscode.ExtensionContext): void {
   try {
-    console.log('[bluebyrd] Activating bluebyrd...');
+    console.log('[byrdsnest api client] Activating byrdsnest api client...');
 
     // 1. Initialize core state and services
     const stateManager = new BlueByrdStateManager(context);
@@ -30,7 +30,7 @@ export function activate(context: vscode.ExtensionContext): void {
     const profilesProvider = new BlueByrdProfilesTreeProvider(stateManager, tokenService);
     const collectionsProvider = new BlueByrdCollectionsTreeProvider(stateManager);
     const environmentsProvider = new BlueByrdEnvironmentsTreeProvider(stateManager);
-    const historyProvider = new BlueByrdHistoryTreeProvider(stateManager);
+    const toolsProvider = new BlueByrdToolsTreeProvider(stateManager, tokenService);
 
     // Dynamic Status Bar Item (Context & Scope Indicator)
     const statusBarItem = vscode.window.createStatusBarItem(
@@ -50,7 +50,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
       statusBarItem.text = `$(account) ${profileLabel} $(globe) ${envLabel}`;
       statusBarItem.tooltip = `Active Profile Scope: ${profileLabel}\nActive Environment: ${envLabel}\nClick to switch profile or environment context`;
-      statusBarItem.command = 'blueByrdApiClient.switchContext';
+      statusBarItem.command = 'byrdsnestApiClient.switchContext';
     };
 
     updateStatusBar();
@@ -62,26 +62,26 @@ export function activate(context: vscode.ExtensionContext): void {
       profilesProvider,
       collectionsProvider,
       environmentsProvider,
-      historyProvider,
+      toolsProvider,
       updateStatusBar
     );
 
     // Register all 4 native view accordions
-    const profilesView = vscode.window.createTreeView('blueByrdProfiles', {
+    const profilesView = vscode.window.createTreeView('byrdsnestProfiles', {
       treeDataProvider: profilesProvider,
     });
-    const collectionsView = vscode.window.createTreeView('blueByrdCollections', {
+    const collectionsView = vscode.window.createTreeView('byrdsnestCollections', {
       treeDataProvider: collectionsProvider,
       dragAndDropController: collectionsProvider,
       canSelectMany: true,
       showCollapseAll: true,
     });
-    const environmentsView = vscode.window.createTreeView('blueByrdEnvironments', {
+    const environmentsView = vscode.window.createTreeView('byrdsnestEnvironments', {
       treeDataProvider: environmentsProvider,
       showCollapseAll: true,
     });
-    const historyView = vscode.window.createTreeView('blueByrdHistory', {
-      treeDataProvider: historyProvider,
+    const toolsView = vscode.window.createTreeView('byrdsnestTools', {
+      treeDataProvider: toolsProvider,
     });
 
     context.subscriptions.push(
@@ -89,7 +89,7 @@ export function activate(context: vscode.ExtensionContext): void {
       profilesView,
       collectionsView,
       environmentsView,
-      historyView
+      toolsView
     );
 
     // 3. Register Commands
@@ -107,16 +107,16 @@ export function activate(context: vscode.ExtensionContext): void {
 
     // 4. Check for Updates in Background (throttled to once every 24 hours)
     updateService.checkForUpdates(false).catch((err) => {
-      console.warn('[bluebyrd] Background update check error:', err?.message);
+      console.warn('[byrdsnest api client] Background update check error:', err?.message);
     });
 
-    console.log('[bluebyrd] Extension activated successfully with breakout views.');
+    console.log('[byrdsnest api client] Extension activated successfully with breakout views.');
   } catch (error) {
-    console.error('[bluebyrd] Failed to activate extension:', error);
-    vscode.window.showErrorMessage('bluebyrd failed to start.');
+    console.error('[byrdsnest api client] Failed to activate extension:', error);
+    vscode.window.showErrorMessage('byrdsnest api client failed to start.');
   }
 }
 
 export function deactivate(): void {
-  console.log('[bluebyrd] Deactivating extension.');
+  console.log('[byrdsnest api client] Deactivating extension.');
 }

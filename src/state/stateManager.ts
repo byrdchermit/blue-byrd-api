@@ -15,7 +15,8 @@ import {
 
 export class BlueByrdStateManager {
   private readonly context: vscode.ExtensionContext;
-  private readonly storageKey = 'blue-byrd-state';
+  private readonly storageKey = 'byrdsnest-api-state';
+  private readonly legacyStorageKey = 'blue-byrd-state';
 
   constructor(context: vscode.ExtensionContext) {
     this.context = context;
@@ -124,7 +125,7 @@ export class BlueByrdStateManager {
                   },
                   body: JSON.stringify(
                     {
-                      title: 'Ship bluebyrd',
+                      title: 'Ship byrdsnest api client',
                       completed: false,
                       userId: 1,
                     },
@@ -341,12 +342,14 @@ export class BlueByrdStateManager {
   }
 
   public getState(): AppState {
-    const saved = this.context.workspaceState.get<Partial<AppState>>(this.storageKey);
+    const saved =
+      this.context.workspaceState.get<Partial<AppState>>(this.storageKey) ||
+      this.context.workspaceState.get<Partial<AppState>>(this.legacyStorageKey);
     try {
       const normalized = this.normalizeState(saved);
       return normalized;
     } catch (err) {
-      console.error('[bluebyrd] Error normalizing state, returning fallback:', err);
+      console.error('[byrdsnest api client] Error normalizing state, returning fallback:', err);
       const fallback = this.createDefaultState();
       this.context.workspaceState.update(this.storageKey, fallback);
       return fallback;
@@ -1051,6 +1054,13 @@ export class BlueByrdStateManager {
 
   public duplicateRequest(requestId: string): RequestItem | undefined {
     return this.cloneRequest(requestId);
+  }
+
+  public renameRequest(requestId: string, newName: string): RequestItem | undefined {
+    const found = this.getRequest(requestId);
+    if (!found) return undefined;
+    found.request.name = newName.trim();
+    return this.saveRequest(found.request, found.collection.id, found.folder?.id);
   }
 
   // --- History Isolated from Collections ---

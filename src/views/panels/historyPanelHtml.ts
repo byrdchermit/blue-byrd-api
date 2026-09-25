@@ -29,7 +29,7 @@ export function getHistoryPanelHtml(
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data: https:;" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>History Inspector — bluebyrd</title>
+  <title>History Inspector — byrdsnest api client</title>
   <style>
     :root {
       --bg: var(--vscode-editor-background, #1e1e1e);
