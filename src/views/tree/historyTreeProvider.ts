@@ -2,19 +2,26 @@ import * as vscode from 'vscode';
 import { AppState, RequestContext } from '../../types';
 import { BlueByrdStateManager } from '../../state/stateManager';
 import { TokenService } from '../../services/tokenService';
+import { UpdateService } from '../../services/updateService';
 import { BlueByrdTreeItem } from './treeItem';
 
 export class BlueByrdToolsTreeProvider
   implements vscode.TreeDataProvider<BlueByrdTreeItem>, vscode.Disposable {
   private readonly stateManager: BlueByrdStateManager;
   private readonly tokenService?: TokenService;
+  private readonly updateService?: UpdateService;
   private state: AppState;
   private readonly _onDidChangeTreeData = new vscode.EventEmitter<BlueByrdTreeItem | undefined>();
   public readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
-  constructor(stateManager: BlueByrdStateManager, tokenService?: TokenService) {
+  constructor(
+    stateManager: BlueByrdStateManager,
+    tokenService?: TokenService,
+    updateService?: UpdateService
+  ) {
     this.stateManager = stateManager;
     this.tokenService = tokenService;
+    this.updateService = updateService;
     this.state = stateManager.getState();
   }
 
@@ -29,6 +36,25 @@ export class BlueByrdToolsTreeProvider
 
   public getTreeItem(element: BlueByrdTreeItem): vscode.TreeItem {
     return element;
+  }
+
+  private getInstalledVersion(): string {
+    if (this.updateService) {
+      return `v${this.updateService.getCurrentVersion()}`;
+    }
+    const ext = vscode.extensions?.getExtension('byrdchermit.byrdsnest-api-client') ||
+                vscode.extensions?.getExtension('byrdchermit.blue-byrd-api');
+    if (ext?.packageJSON?.version) {
+      return `v${ext.packageJSON.version}`;
+    }
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const pkg = require('../../../package.json');
+      if (pkg?.version) return `v${pkg.version}`;
+    } catch {
+      // ignore
+    }
+    return 'v0.3.1';
   }
 
   public getChildren(element?: BlueByrdTreeItem): BlueByrdTreeItem[] {
@@ -187,7 +213,7 @@ export class BlueByrdToolsTreeProvider
         command: 'byrdsnestApiClient.checkForUpdates',
         arguments: [],
       },
-      'v0.3.0',
+      this.getInstalledVersion(),
       vscode.TreeItemCollapsibleState.None
     );
     updateItem.iconPath = new vscode.ThemeIcon('sync');

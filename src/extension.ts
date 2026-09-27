@@ -30,7 +30,7 @@ export function activate(context: vscode.ExtensionContext): void {
     const profilesProvider = new BlueByrdProfilesTreeProvider(stateManager, tokenService);
     const collectionsProvider = new BlueByrdCollectionsTreeProvider(stateManager);
     const environmentsProvider = new BlueByrdEnvironmentsTreeProvider(stateManager);
-    const toolsProvider = new BlueByrdToolsTreeProvider(stateManager, tokenService);
+    const toolsProvider = new BlueByrdToolsTreeProvider(stateManager, tokenService, updateService);
 
     // Dynamic Status Bar Item (Context & Scope Indicator)
     const statusBarItem = vscode.window.createStatusBarItem(

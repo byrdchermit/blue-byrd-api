@@ -2285,6 +2285,11 @@ console.log('✓ Request panel script integrity & syntax validation passed');
     const curlItem = toolItems.find(t => t.label === 'Import from cURL...');
     assert(curlItem.command.command === 'byrdsnestApiClient.importCurl' || curlItem.command.command === 'blueByrdApiClient.importCurl');
 
+    // Verify Check for Updates description displays current installed version
+    const updateToolItem = toolItems.find(t => t.label === 'Check for Updates...');
+    assert(updateToolItem, 'Check for Updates tool item must exist');
+    assert.strictEqual(updateToolItem.description, 'v0.3.1', 'Check for Updates description must match current version v0.3.1');
+
     // Verify coordinator compatibility
     const coordinator43 = new BlueByrdTreeCoordinator(
       new BlueByrdProfilesTreeProvider(stateManager43),
