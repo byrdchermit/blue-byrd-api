@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3.4] - 2026-09-27
+
+### Fixed
+- **Fitted Tabs & Elimination of Unwanted Scrollbars**:
+  - Fixed `.tab-header` styling so tab buttons fit naturally across the header bar without scrollbars.
+  - Eliminated unwanted vertical scrollbars (`▲` `▼` arrows) that Chromium on Windows was generating on `.tab-header` and `.body-nav`.
+  - Added strict scrollbar suppression and `overflow: hidden` across primary tab headers, body type subtabs, and the URL preview bar.
+  - Constrained `.tab-content` to clean vertical scrolling (`overflow-y: auto; overflow-x: hidden`).
+
+---
+
 ## [0.3.3] - 2026-09-27
 
 ### Added

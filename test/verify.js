@@ -3792,7 +3792,12 @@ console.log('✓ Request panel script integrity & syntax validation passed');
     assert.strictEqual(envBaseUrls.length, 1, 'Environment must have exactly 1 baseUrl entry');
     assert.strictEqual(envEnvBaseUrls.length, 0, 'Environment must NOT have redundant duplicate envBaseUrl in inherited list');
 
-    console.log('✓ Collapsible Response Body Objects & Arrays, Cleaned CollectionBaseUrl verified');
+    // 3. Verify tabs fit cleanly and do not show scrollbars
+    assert(reqHtml.includes('.tab-header {') && reqHtml.includes('scrollbar-width: none;'), 'tab-header must disable scrollbars');
+    assert(!reqHtml.includes('.tab-header {\n      display: flex;\n      gap: 2px;\n      border-bottom: 1px solid var(--border);\n      background: rgba(0,0,0,0.15);\n      overflow-x: auto;'), 'tab-header must not have overflow-x: auto');
+    assert(reqHtml.includes('.body-nav {') && reqHtml.includes('overflow: hidden;'), 'body-nav must fit without scrollbars');
+
+    console.log('✓ Collapsible Response Body Objects & Arrays, Cleaned CollectionBaseUrl & Fitted Tabs verified');
   }
 
   console.log('\nAll 59 verification test suites passed successfully! 🎉');

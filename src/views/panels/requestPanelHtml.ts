@@ -508,12 +508,20 @@ export function getRequestPanelHtml(
       gap: 2px;
       border-bottom: 1px solid var(--border);
       background: rgba(0,0,0,0.15);
-      overflow-x: auto;
+      overflow: hidden;
       padding: 0 4px;
       flex-shrink: 0;
+      flex-wrap: nowrap;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+    .tab-header::-webkit-scrollbar {
+      display: none;
+      width: 0;
+      height: 0;
     }
     .tab-btn {
-      padding: 8px 14px;
+      padding: 8px 12px;
       background: transparent;
       border: none;
       border-bottom: 2px solid transparent;
@@ -528,6 +536,8 @@ export function getRequestPanelHtml(
       font-weight: 500;
       white-space: nowrap;
       transition: all 0.15s ease;
+      flex: 0 1 auto;
+      min-width: 0;
     }
     .tab-btn:hover {
       color: var(--text);
@@ -543,7 +553,8 @@ export function getRequestPanelHtml(
       padding: 12px;
       flex: 1;
       display: none;
-      overflow: auto;
+      overflow-y: auto;
+      overflow-x: hidden;
       min-height: 0;
     }
     .tab-content.active {
@@ -919,10 +930,18 @@ export function getRequestPanelHtml(
       gap: 2px;
       margin-bottom: 8px;
       border-bottom: 1px solid var(--border);
-      overflow-x: auto;
+      overflow: hidden;
       align-items: flex-end;
       padding: 0;
       flex-shrink: 0;
+      flex-wrap: nowrap;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+    .body-nav::-webkit-scrollbar {
+      display: none;
+      width: 0;
+      height: 0;
     }
     .radio-pill {
       display: inline-flex;
@@ -1210,10 +1229,18 @@ export function getRequestPanelHtml(
       font-family: Consolas, Monaco, "Courier New", monospace;
       white-space: nowrap;
       overflow-x: auto;
+      overflow-y: hidden;
       display: flex;
       align-items: center;
       gap: 6px;
       transition: background 0.15s ease, border-color 0.15s ease;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+    .url-preview-bar::-webkit-scrollbar {
+      display: none;
+      width: 0;
+      height: 0;
     }
     .url-preview-bar.has-unresolved {
       background: rgba(241, 76, 76, 0.06);
@@ -1232,7 +1259,15 @@ export function getRequestPanelHtml(
       align-items: center;
       flex-wrap: nowrap;
       overflow-x: auto;
+      overflow-y: hidden;
       gap: 2px;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+    .url-preview-resolved::-webkit-scrollbar {
+      display: none;
+      width: 0;
+      height: 0;
     }
     .token-hl {
       display: inline-block;
