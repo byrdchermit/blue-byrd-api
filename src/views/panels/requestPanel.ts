@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { RequestContext, RequestItem, StoredToken } from '../../types';
+import { AppState, EnvironmentConfig, Profile, RequestContext, RequestItem, StoredToken } from '../../types';
 import { BlueByrdStateManager } from '../../state/stateManager';
 import { HttpService } from '../../services/httpService';
 import { VariableService } from '../../services/variableService';
@@ -95,6 +95,49 @@ export class BlueByrdPanel {
   }
 
   /**
+   * Broadcast state update (e.g. environment, collection, folder, or profile updated)
+   * to all open request panels so they can refresh inherited headers and variables.
+   */
+  public static broadcastStateUpdated(state?: AppState): void {
+    this.panels.forEach((p) => {
+      p.refreshInheritedData(state);
+    });
+  }
+
+  /**
+   * Re-evaluates state and prompts webview to refresh inherited variables,
+   * inherited headers, and environment/profile selectors.
+   */
+  public refreshInheritedData(state?: AppState): void {
+    try {
+      const currentState = state || this.stateManager.getState();
+      const environments = Object.entries(currentState.environments).map(([name, env]: [string, EnvironmentConfig]) => ({
+        id: env.id,
+        name,
+        inheritsFrom: env.inheritsFrom,
+        profileId: env.profileId,
+        baseUrl: env.baseUrl,
+        baseUrlDisabled: env.baseUrlDisabled,
+      }));
+      const profiles = currentState.profiles.map((pr: Profile) => ({
+        id: pr.id,
+        name: pr.name,
+        color: pr.color,
+      }));
+
+      this.panel.webview.postMessage({
+        type: 'stateUpdated',
+        environments,
+        profiles,
+        activeEnvironment: currentState.activeEnvironmentName,
+        activeProfileId: currentState.activeProfileId,
+      });
+    } catch (err) {
+      console.error('[byrdsnest api client] Error refreshing inherited data in panel:', err);
+    }
+  }
+
+  /**
    * Notify matching open panels when a request is renamed.
    */
   public static notifyRequestRenamed(requestId: string, newName: string): void {
@@ -133,6 +176,13 @@ export class BlueByrdPanel {
     this.panelKey = panelKey;
     this.tokenService = tokenService;
 
+    // Listen for state changes to live-update inherited headers and variables across open panels
+    this.disposables.push(
+      this.stateManager.onDidChangeState((state) => {
+        this.refreshInheritedData(state);
+      })
+    );
+
     // Pre-calculate initial inherited variables and headers for inspector
     const state = this.stateManager.getState();
     const envKeys = Object.keys(state.environments);
@@ -148,13 +198,15 @@ export class BlueByrdPanel {
       initialEnv,
       initialCol,
       initialFolder,
-      initialVars
+      initialVars,
+      initialContext?.baseUrlPreference
     );
     const headerDetails = this.variableService.resolveHeadersDetailed(
       initialEnv,
       initialCol,
       initialFolder,
-      initialHeaders
+      initialHeaders,
+      initialProfile
     );
 
     const availableTokens = this.tokenService
@@ -169,7 +221,8 @@ export class BlueByrdPanel {
       state,
       varDetails.inherited,
       headerDetails.inherited,
-      availableTokens
+      availableTokens,
+      varDetails.resolved
     );
 
     // Listen for disposal
@@ -194,6 +247,46 @@ export class BlueByrdPanel {
         try {
           if (message.type === 'sendRequest') {
             const payload = message.payload;
+
+            // Check Safety Guards for active/assigned Profile
+            const profileKey = payload.profileId || payload.profile || this.stateManager.getActiveProfileId();
+            const profile = profileKey ? this.stateManager.getProfile(profileKey) : undefined;
+            if (profile?.guards?.enabled) {
+              const method = (payload.method || 'GET').toUpperCase();
+              const blocked = (profile.guards.blockedMethods || []).map((m: string) => m.toUpperCase());
+              if (blocked.includes(method)) {
+                if (profile.guards.requireKeywordConfirmation) {
+                  const kw = (profile.guards.confirmationKeyword || 'CONFIRM').trim();
+                  const typed = await vscode.window.showInputBox({
+                    prompt: `⚠️ High Risk: ${method} requests are guarded on profile "${profile.name}". Type "${kw}" to proceed:`,
+                    placeHolder: kw,
+                    ignoreFocusOut: true,
+                  });
+                  if (!typed || typed.trim().toUpperCase() !== kw.toUpperCase()) {
+                    vscode.window.showWarningMessage(`Request cancelled. Confirmation keyword did not match.`);
+                    return;
+                  }
+                } else {
+                  vscode.window.showErrorMessage(
+                    `⛔ Request Blocked: HTTP ${method} requests are blocked by Safety Guards on profile "${profile.name}".`
+                  );
+                  return;
+                }
+              } else if (profile.guards.warnBeforeSend) {
+                const warnMsg = (profile.guards.warnMessage || '').trim() ||
+                  `⚠️ Safety Warning: You are sending a ${method} request under guarded profile "${profile.name}". Proceed?`;
+                const choice = await vscode.window.showWarningMessage(
+                  warnMsg,
+                  { modal: true },
+                  'Send Request',
+                  'Cancel'
+                );
+                if (choice !== 'Send Request') {
+                  return;
+                }
+              }
+            }
+
             const meta = await this.httpService.executeRequest(payload);
             this.panel.webview.postMessage({ type: 'requestResult', meta });
             // Refresh explorer so history node updates
@@ -213,6 +306,7 @@ export class BlueByrdPanel {
               bodyFormData: payload.bodyFormData,
               profile: payload.profile,
               environment: payload.environment,
+              baseUrlPreference: payload.baseUrlPreference,
               auth: payload.auth,
               notes: payload.notes,
               variables: payload.variables,
@@ -228,6 +322,7 @@ export class BlueByrdPanel {
               this.initialContext.requestName = saved.name;
               this.initialContext.id = saved.id;
               this.initialContext.requestId = saved.id;
+              this.initialContext.baseUrlPreference = saved.baseUrlPreference;
             }
             this.panel.webview.postMessage({ type: 'saved', id: saved.id, name: saved.name });
 
@@ -258,18 +353,21 @@ export class BlueByrdPanel {
               payload.environment,
               payload.collection,
               payload.folder,
-              payload.variables
+              payload.variables,
+              payload.baseUrlPreference
             );
             const headerDetails = this.variableService.resolveHeadersDetailed(
               payload.environment,
               payload.collection,
               payload.folder,
-              payload.headers || {}
+              payload.headers || {},
+              payload.profileId || payload.profile
             );
             this.panel.webview.postMessage({
               type: 'updateInherited',
               inheritedVars: varDetails.inherited,
               inheritedHeaders: headerDetails.inherited,
+              resolvedVars: varDetails.resolved,
             });
           } else if (message.type === 'previewRequest') {
             const payload = message.payload;
@@ -278,13 +376,15 @@ export class BlueByrdPanel {
               payload.environment,
               payload.collection,
               payload.folder,
-              payload.variables
+              payload.variables,
+              payload.baseUrlPreference
             );
             const hierarchicalHeaders = this.variableService.resolveHeaders(
               payload.environment,
               payload.collection,
               payload.folder,
-              payload.headers || {}
+              payload.headers || {},
+              payload.profileId || payload.profile
             );
             const authHeaders = this.authService.resolveAuthHeaders(
               payload.profileId || payload.profile,
@@ -330,13 +430,15 @@ export class BlueByrdPanel {
               payload.environment,
               payload.collection,
               payload.folder,
-              payload.variables
+              payload.variables,
+              payload.baseUrlPreference
             );
             const hierarchicalHeaders = this.variableService.resolveHeaders(
               payload.environment,
               payload.collection,
               payload.folder,
-              payload.headers || {}
+              payload.headers || {},
+              payload.profileId || payload.profile
             );
             const authHeaders = this.authService.resolveAuthHeaders(
               payload.profileId || payload.profile,
@@ -386,7 +488,31 @@ export class BlueByrdPanel {
             }
 
             await vscode.env.clipboard.writeText(curl);
-            vscode.window.showInformationMessage('cURL command copied to clipboard!');
+            vscode.window.showInformationMessage('cURL command copied to clipboard.');
+          } else if (message.type === 'openSettings') {
+            vscode.commands.executeCommand('byrdsnestApiClient.openSettings');
+          } else if (message.type === 'openInEditor') {
+            const content = typeof message.content === 'string' ? message.content : JSON.stringify(message.content, null, 2);
+            const language = message.language || 'json';
+            const doc = await vscode.workspace.openTextDocument({
+              content,
+              language,
+            });
+            await vscode.window.showTextDocument(doc, {
+              viewColumn: vscode.ViewColumn.Beside,
+              preview: true,
+            });
+            if (message.target === 'requestBody') {
+              const docSub = vscode.workspace.onDidChangeTextDocument((e) => {
+                if (e.document === doc) {
+                  this.panel.webview.postMessage({
+                    type: 'setRequestBody',
+                    body: doc.getText(),
+                  });
+                }
+              });
+              this.disposables.push(docSub);
+            }
           } else if (message.type === 'selectFile') {
             const uris = await vscode.window.showOpenDialog({
               canSelectFiles: true,

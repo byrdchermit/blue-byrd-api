@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { AppState, StoredToken } from '../../types';
 import { BlueByrdStateManager } from '../../state/stateManager';
 import { TokenService } from '../../services/tokenService';
-import { BlueByrdTreeItem } from './treeItem';
+import { BlueByrdTreeItem, getProfileIcon } from './treeItem';
 
 export class BlueByrdProfilesTreeProvider
   implements vscode.TreeDataProvider<BlueByrdTreeItem>, vscode.Disposable {
@@ -49,7 +49,7 @@ export class BlueByrdProfilesTreeProvider
 
     for (const p of this.state.profiles) {
       const isActive = activeProfileId === p.id || activeProfileId === p.name;
-      const desc = isActive ? '✔ Active' : undefined;
+      const desc = isActive ? '✔ Active (1 active)' : 'Click to activate';
 
       const item = new BlueByrdTreeItem(
         p.name,
@@ -68,10 +68,11 @@ export class BlueByrdProfilesTreeProvider
       );
 
       if (isActive) {
-        item.iconPath = new vscode.ThemeIcon('check', new vscode.ThemeColor('charts.blue'));
+        item.iconPath = new vscode.ThemeIcon('check', new vscode.ThemeColor('charts.green'));
       } else {
-        item.iconPath = new vscode.ThemeIcon('account');
+        item.iconPath = new vscode.ThemeIcon('circle-outline');
       }
+      item.tooltip = `Profile: ${p.name}\nColor Theme: ${p.color || '#3b82f6'}\n${isActive ? 'Currently Active Profile' : 'Click to activate'}`;
       items.push(item);
     }
 
@@ -89,16 +90,34 @@ export class BlueByrdProfilesTreeProvider
         command: 'byrdsnestApiClient.setActiveProfile',
         arguments: [{ id: 'global', name: 'Shared / Global' }],
       },
-      isGlobalActive ? '✔ Active' : 'Shared across all profiles',
+      isGlobalActive ? '✔ Active (1 active)' : 'Click to activate',
       vscode.TreeItemCollapsibleState.Collapsed
     );
 
     if (isGlobalActive) {
-      globalItem.iconPath = new vscode.ThemeIcon('check', new vscode.ThemeColor('charts.blue'));
+      globalItem.iconPath = new vscode.ThemeIcon('check', new vscode.ThemeColor('charts.green'));
     } else {
       globalItem.iconPath = new vscode.ThemeIcon('globe');
     }
     items.push(globalItem);
+
+    // Settings item at bottom of list
+    const settingsItem = new BlueByrdTreeItem(
+      'Manage Profiles & Settings...',
+      'section',
+      'open-settings-action',
+      undefined,
+      undefined,
+      [],
+      {
+        title: 'Open Settings',
+        command: 'byrdsnestApiClient.openSettings',
+      },
+      '⚙ Configure',
+      vscode.TreeItemCollapsibleState.None
+    );
+    settingsItem.iconPath = new vscode.ThemeIcon('gear');
+    items.push(settingsItem);
 
     return items;
   }
@@ -166,7 +185,7 @@ export class BlueByrdProfilesTreeProvider
         [],
         {
           title: 'Manage Tokens',
-          command: 'blueByrdApiClient.manageTokens',
+          command: 'byrdsnestApiClient.manageTokens',
           arguments: [{ profileId }],
         },
         descParts.join(' • '),

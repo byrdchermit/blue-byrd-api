@@ -2,7 +2,7 @@
   "name": "byrdsnest-api-client",
   "displayName": "byrdsnest api client",
   "description": "A native, local-first API client for VS Code with hierarchical inheritance, unified auth, and universal JSON import/export (Public Beta).",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "publisher": "byrdchermit",
   "icon": "media/icon.png",
   "repository": {
@@ -54,10 +54,6 @@
     "views": {
       "byrdsnestApiClient": [
         {
-          "id": "byrdsnestProfiles",
-          "name": "Profiles"
-        },
-        {
           "id": "byrdsnestCollections",
           "name": "Collections"
         },
@@ -67,224 +63,280 @@
         },
         {
           "id": "byrdsnestTools",
-          "name": "Tools",
-          "visibility": "collapsed"
+          "name": "Tools"
         }
       ]
     },
     "commands": [
       {
         "command": "byrdsnestApiClient.openRequestPanel",
-        "title": "byrdsnest api client: Open API Client"
+        "category": "byrdsnest api client",
+        "title": "Open API Client"
       },
       {
         "command": "byrdsnestApiClient.openSidebar",
-        "title": "byrdsnest api client: Open Sidebar"
+        "category": "byrdsnest api client",
+        "title": "Open Sidebar"
       },
       {
         "command": "byrdsnestApiClient.newRequest",
-        "title": "byrdsnest api client: New Request",
+        "category": "byrdsnest api client",
+        "title": "New Request",
         "icon": "$(add)"
       },
       {
         "command": "byrdsnestApiClient.refreshExplorer",
-        "title": "byrdsnest api client: Refresh Explorer",
+        "category": "byrdsnest api client",
+        "title": "Refresh Explorer",
         "icon": "$(refresh)"
       },
       {
+        "command": "byrdsnestApiClient.openSettings",
+        "category": "byrdsnest api client",
+        "title": "Open Settings & Profile Manager",
+        "icon": "$(gear)"
+      },
+      {
         "command": "byrdsnestApiClient.createProfile",
-        "title": "byrdsnest api client: New Profile",
+        "category": "byrdsnest api client",
+        "title": "New Profile",
         "icon": "$(add)"
       },
       {
         "command": "byrdsnestApiClient.manageTokens",
-        "title": "byrdsnest api client: Manage OAuth Tokens",
+        "category": "byrdsnest api client",
+        "title": "Manage OAuth Tokens",
         "icon": "$(key)"
       },
       {
         "command": "byrdsnestApiClient.deleteToken",
-        "title": "byrdsnest api client: Delete Token",
+        "category": "byrdsnest api client",
+        "title": "Delete Token",
         "icon": "$(trash)"
       },
       {
         "command": "byrdsnestApiClient.clearProfileTokens",
-        "title": "byrdsnest api client: Clear Profile Tokens",
+        "category": "byrdsnest api client",
+        "title": "Clear Profile Tokens",
         "icon": "$(clear-all)"
       },
       {
         "command": "byrdsnestApiClient.copyToken",
-        "title": "byrdsnest api client: Copy Access Token",
+        "category": "byrdsnest api client",
+        "title": "Copy Access Token",
         "icon": "$(copy)"
       },
       {
         "command": "byrdsnestApiClient.createEnvironment",
-        "title": "byrdsnest api client: New Environment",
+        "category": "byrdsnest api client",
+        "title": "New Environment",
         "icon": "$(add)"
       },
       {
         "command": "byrdsnestApiClient.createChildEnvironment",
-        "title": "byrdsnest api client: New Child Environment",
+        "category": "byrdsnest api client",
+        "title": "New Child Environment",
         "icon": "$(add)"
       },
       {
         "command": "byrdsnestApiClient.createCollection",
-        "title": "byrdsnest api client: New Collection",
+        "category": "byrdsnest api client",
+        "title": "New Collection",
         "icon": "$(new-folder)"
       },
       {
         "command": "byrdsnestApiClient.createFolder",
-        "title": "byrdsnest api client: New Folder",
+        "category": "byrdsnest api client",
+        "title": "New Folder",
         "icon": "$(new-folder)"
       },
       {
         "command": "byrdsnestApiClient.duplicateRequest",
-        "title": "byrdsnest api client: Duplicate Request",
+        "category": "byrdsnest api client",
+        "title": "Duplicate Request",
         "icon": "$(copy)"
       },
       {
         "command": "byrdsnestApiClient.deleteItem",
-        "title": "byrdsnest api client: Delete",
+        "category": "byrdsnest api client",
+        "title": "Delete",
         "icon": "$(trash)"
       },
       {
         "command": "byrdsnestApiClient.clearHistory",
-        "title": "byrdsnest api client: Clear History",
+        "category": "byrdsnest api client",
+        "title": "Clear History",
         "icon": "$(clear-all)"
       },
       {
         "command": "byrdsnestApiClient.editProfile",
-        "title": "byrdsnest api client: Edit Profile Settings"
+        "category": "byrdsnest api client",
+        "title": "Edit Profile Settings"
       },
       {
         "command": "byrdsnestApiClient.editEnvironment",
-        "title": "byrdsnest api client: Edit Environment Settings"
+        "category": "byrdsnest api client",
+        "title": "Edit Environment Settings"
       },
       {
         "command": "byrdsnestApiClient.editCollection",
-        "title": "byrdsnest api client: Edit Collection Settings"
+        "category": "byrdsnest api client",
+        "title": "Edit Collection Settings"
       },
       {
         "command": "byrdsnestApiClient.editFolder",
-        "title": "byrdsnest api client: Edit Folder Settings",
+        "category": "byrdsnest api client",
+        "title": "Edit Folder Settings",
         "icon": "$(edit)"
       },
       {
         "command": "byrdsnestApiClient.openHistoryPanel",
-        "title": "byrdsnest api client: Open History Inspector",
+        "category": "byrdsnest api client",
+        "title": "Open History Inspector",
         "icon": "$(history)"
       },
       {
         "command": "byrdsnestApiClient.importCurl",
-        "title": "byrdsnest api client: Import from cURL",
+        "category": "byrdsnest api client",
+        "title": "Import from cURL",
         "icon": "$(terminal)"
       },
       {
         "command": "byrdsnestApiClient.importJson",
-        "title": "byrdsnest api client: Import JSON (Postman, OpenAPI, or Backup)",
+        "category": "byrdsnest api client",
+        "title": "Import JSON (Postman, OpenAPI, or Backup)",
         "icon": "$(cloud-upload)"
       },
       {
         "command": "byrdsnestApiClient.exportCollection",
-        "title": "byrdsnest api client: Export Collection as JSON",
+        "category": "byrdsnest api client",
+        "title": "Export Collection as JSON",
         "icon": "$(cloud-download)"
       },
       {
         "command": "byrdsnestApiClient.exportEnvironment",
-        "title": "byrdsnest api client: Export Environment as JSON",
+        "category": "byrdsnest api client",
+        "title": "Export Environment as JSON",
         "icon": "$(cloud-download)"
       },
       {
         "command": "byrdsnestApiClient.exportBackup",
-        "title": "byrdsnest api client: Export Full Workspace Backup as JSON",
+        "category": "byrdsnest api client",
+        "title": "Export Full Workspace Backup as JSON",
         "icon": "$(save-all)"
       },
       {
         "command": "byrdsnestApiClient.checkForUpdates",
-        "title": "byrdsnest api client: Check for Updates",
+        "category": "byrdsnest api client",
+        "title": "Check for Updates",
         "icon": "$(sync)"
       },
       {
         "command": "byrdsnestApiClient.switchActiveProfile",
-        "title": "byrdsnest api client: Switch Active Profile Scope",
-        "icon": "$(filter)"
+        "category": "byrdsnest api client",
+        "title": "Switch Active Profile Scope",
+        "icon": "$(arrow-swap)"
       },
       {
         "command": "byrdsnestApiClient.setActiveProfile",
-        "title": "byrdsnest api client: Set as Active Profile Scope",
+        "category": "byrdsnest api client",
+        "title": "Set as Active Profile Scope",
         "icon": "$(check)"
       },
       {
+        "command": "byrdsnestApiClient.clearActiveEnvironment",
+        "category": "byrdsnest api client",
+        "title": "Clear Active Environment",
+        "icon": "$(circle-slash)"
+      },
+      {
         "command": "byrdsnestApiClient.switchActiveEnvironment",
-        "title": "byrdsnest api client: Switch Active Environment",
+        "category": "byrdsnest api client",
+        "title": "Switch Active Environment",
         "icon": "$(globe)"
       },
       {
         "command": "byrdsnestApiClient.setActiveEnvironment",
-        "title": "byrdsnest api client: Set as Active Environment",
+        "category": "byrdsnest api client",
+        "title": "Set as Active Environment",
         "icon": "$(check)"
       },
       {
         "command": "byrdsnestApiClient.switchContext",
-        "title": "byrdsnest api client: Switch Context (Profile / Environment)",
+        "category": "byrdsnest api client",
+        "title": "Switch Context (Profile / Environment)",
         "icon": "$(arrow-swap)"
       },
       {
         "command": "byrdsnestApiClient.assignProfileScope",
-        "title": "byrdsnest api client: Assign Profile Scope...",
+        "category": "byrdsnest api client",
+        "title": "Assign Profile Scope...",
         "icon": "$(organization)"
       },
       {
         "command": "byrdsnestApiClient.moveItemUp",
-        "title": "byrdsnest api client: Move Up (Reorder)",
+        "category": "byrdsnest api client",
+        "title": "Move Up (Reorder)",
         "icon": "$(arrow-up)"
       },
       {
         "command": "byrdsnestApiClient.moveItemDown",
-        "title": "byrdsnest api client: Move Down (Reorder)",
+        "category": "byrdsnest api client",
+        "title": "Move Down (Reorder)",
         "icon": "$(arrow-down)"
       },
       {
         "command": "byrdsnestApiClient.moveRequestTo",
-        "title": "byrdsnest api client: Move Request To...",
+        "category": "byrdsnest api client",
+        "title": "Move Request To...",
         "icon": "$(folder-opened)"
       },
       {
         "command": "byrdsnestApiClient.moveFolderTo",
-        "title": "byrdsnest api client: Move Folder To...",
+        "category": "byrdsnest api client",
+        "title": "Move Folder To...",
         "icon": "$(folder)"
       },
       {
         "command": "byrdsnestApiClient.cloneEnvironment",
-        "title": "byrdsnest api client: Clone Environment",
+        "category": "byrdsnest api client",
+        "title": "Clone Environment",
         "icon": "$(copy)"
       },
       {
         "command": "byrdsnestApiClient.cloneRequest",
-        "title": "byrdsnest api client: Clone Request",
+        "category": "byrdsnest api client",
+        "title": "Clone Request",
         "icon": "$(copy)"
       },
       {
         "command": "byrdsnestApiClient.renameRequest",
-        "title": "byrdsnest api client: Rename Request",
+        "category": "byrdsnest api client",
+        "title": "Rename Request",
         "icon": "$(edit)"
       }
     ],
     "menus": {
       "view/title": [
         {
-          "command": "byrdsnestApiClient.manageTokens",
-          "when": "(view == byrdsnestProfiles || view == blueByrdProfiles)",
+          "command": "byrdsnestApiClient.openSettings",
+          "when": "(view == byrdsnestTools || view == blueByrdTools || view == byrdsnestProfiles || view == blueByrdProfiles)",
           "group": "navigation@1"
         },
         {
-          "command": "byrdsnestApiClient.createProfile",
-          "when": "(view == byrdsnestProfiles || view == blueByrdProfiles)",
+          "command": "byrdsnestApiClient.manageTokens",
+          "when": "(view == byrdsnestTools || view == blueByrdTools || view == byrdsnestProfiles || view == blueByrdProfiles)",
           "group": "navigation@2"
         },
         {
-          "command": "byrdsnestApiClient.refreshExplorer",
-          "when": "(view == byrdsnestProfiles || view == blueByrdProfiles)",
+          "command": "byrdsnestApiClient.createProfile",
+          "when": "(view == byrdsnestTools || view == blueByrdTools || view == byrdsnestProfiles || view == blueByrdProfiles)",
           "group": "navigation@3"
+        },
+        {
+          "command": "byrdsnestApiClient.refreshExplorer",
+          "when": "(view == byrdsnestTools || view == blueByrdTools || view == byrdsnestProfiles || view == blueByrdProfiles)",
+          "group": "navigation@4"
         },
         {
           "command": "byrdsnestApiClient.newRequest",
@@ -334,6 +386,16 @@
       ],
       "view/item/context": [
         {
+          "command": "byrdsnestApiClient.switchActiveProfile",
+          "when": "viewItem == byrdsnest.activeFilter || viewItem == bluebyrd.activeFilter",
+          "group": "inline@1"
+        },
+        {
+          "command": "byrdsnestApiClient.openSettings",
+          "when": "viewItem == byrdsnest.activeFilter || viewItem == bluebyrd.activeFilter",
+          "group": "inline@2"
+        },
+        {
           "command": "byrdsnestApiClient.createProfile",
           "when": "(viewItem == byrdsnest.section.profiles || viewItem == bluebyrd.section.profiles)",
           "group": "inline@1"
@@ -355,43 +417,43 @@
         },
         {
           "command": "byrdsnestApiClient.setActiveProfile",
-          "when": "(view == byrdsnestProfiles || view == blueByrdProfiles) && (viewItem == byrdsnest.profile || viewItem == bluebyrd.profile)",
+          "when": "(view == byrdsnestProfiles || view == blueByrdProfiles || view == byrdsnestTools || view == blueByrdTools) && (viewItem == byrdsnest.profile || viewItem == bluebyrd.profile)",
           "group": "inline@1"
         },
         {
           "command": "byrdsnestApiClient.manageTokens",
-          "when": "(view == byrdsnestProfiles || view == blueByrdProfiles) && (viewItem == byrdsnest.profile || viewItem == bluebyrd.profile)",
-          "group": "inline@2"
-        },
-        {
-          "command": "byrdsnestApiClient.createProfile",
-          "when": "(view == byrdsnestProfiles || view == blueByrdProfiles) && (viewItem == byrdsnest.profile || viewItem == bluebyrd.profile)",
+          "when": "(view == byrdsnestProfiles || view == blueByrdProfiles || view == byrdsnestTools || view == blueByrdTools) && (viewItem == byrdsnest.profile || viewItem == bluebyrd.profile)",
           "group": "2_manage@1"
         },
         {
-          "command": "byrdsnestApiClient.clearProfileTokens",
-          "when": "(view == byrdsnestProfiles || view == blueByrdProfiles) && (viewItem == byrdsnest.profile || viewItem == bluebyrd.profile)",
+          "command": "byrdsnestApiClient.createProfile",
+          "when": "(view == byrdsnestProfiles || view == blueByrdProfiles || view == byrdsnestTools || view == blueByrdTools) && (viewItem == byrdsnest.profile || viewItem == bluebyrd.profile)",
           "group": "2_manage@2"
         },
         {
+          "command": "byrdsnestApiClient.clearProfileTokens",
+          "when": "(view == byrdsnestProfiles || view == blueByrdProfiles || view == byrdsnestTools || view == blueByrdTools) && (viewItem == byrdsnest.profile || viewItem == bluebyrd.profile)",
+          "group": "2_manage@3"
+        },
+        {
           "command": "byrdsnestApiClient.editProfile",
-          "when": "(view == byrdsnestProfiles || view == blueByrdProfiles) && (viewItem == byrdsnest.profile || viewItem == bluebyrd.profile)",
+          "when": "(view == byrdsnestProfiles || view == blueByrdProfiles || view == byrdsnestTools || view == blueByrdTools) && (viewItem == byrdsnest.profile || viewItem == bluebyrd.profile)",
           "group": "1_settings"
         },
         {
           "command": "byrdsnestApiClient.deleteItem",
-          "when": "(view == byrdsnestProfiles || view == blueByrdProfiles) && (viewItem == byrdsnest.profile || viewItem == bluebyrd.profile)",
-          "group": "inline@9"
+          "when": "(view == byrdsnestProfiles || view == blueByrdProfiles || view == byrdsnestTools || view == blueByrdTools) && (viewItem == byrdsnest.profile || viewItem == bluebyrd.profile)",
+          "group": "9_delete"
         },
         {
           "command": "byrdsnestApiClient.copyToken",
-          "when": "(view == byrdsnestProfiles || view == blueByrdProfiles) && (viewItem == byrdsnest.token || viewItem == bluebyrd.token)",
+          "when": "(view == byrdsnestProfiles || view == blueByrdProfiles || view == byrdsnestTools || view == blueByrdTools) && (viewItem == byrdsnest.token || viewItem == bluebyrd.token)",
           "group": "inline@1"
         },
         {
           "command": "byrdsnestApiClient.deleteToken",
-          "when": "(view == byrdsnestProfiles || view == blueByrdProfiles) && (viewItem == byrdsnest.token || viewItem == bluebyrd.token)",
-          "group": "inline@9"
+          "when": "(view == byrdsnestProfiles || view == blueByrdProfiles || view == byrdsnestTools || view == blueByrdTools) && (viewItem == byrdsnest.token || viewItem == bluebyrd.token)",
+          "group": "9_delete"
         },
         {
           "command": "byrdsnestApiClient.setActiveEnvironment",
@@ -416,12 +478,7 @@
         {
           "command": "byrdsnestApiClient.exportEnvironment",
           "when": "(view == byrdsnestEnvironments || view == blueByrdEnvironments) && ((viewItem == byrdsnest.environment || viewItem == bluebyrd.environment) || (viewItem == byrdsnest.environment.parent || viewItem == bluebyrd.environment.parent))",
-          "group": "inline@2"
-        },
-        {
-          "command": "byrdsnestApiClient.cloneEnvironment",
-          "when": "(view == byrdsnestEnvironments || view == blueByrdEnvironments) && ((viewItem == byrdsnest.environment || viewItem == bluebyrd.environment) || (viewItem == byrdsnest.environment.parent || viewItem == bluebyrd.environment.parent))",
-          "group": "inline@3"
+          "group": "2_manage@5"
         },
         {
           "command": "byrdsnestApiClient.cloneEnvironment",
@@ -436,7 +493,7 @@
         {
           "command": "byrdsnestApiClient.deleteItem",
           "when": "(view == byrdsnestEnvironments || view == blueByrdEnvironments) && ((viewItem == byrdsnest.environment || viewItem == bluebyrd.environment) || (viewItem == byrdsnest.environment.parent || viewItem == bluebyrd.environment.parent))",
-          "group": "inline@9"
+          "group": "9_delete"
         },
         {
           "command": "byrdsnestApiClient.newRequest",
@@ -446,12 +503,12 @@
         {
           "command": "byrdsnestApiClient.createFolder",
           "when": "(view == byrdsnestCollections || view == blueByrdCollections) && (viewItem == byrdsnest.collection || viewItem == bluebyrd.collection)",
-          "group": "inline@2"
+          "group": "2_manage@1"
         },
         {
           "command": "byrdsnestApiClient.exportCollection",
           "when": "(view == byrdsnestCollections || view == blueByrdCollections) && (viewItem == byrdsnest.collection || viewItem == bluebyrd.collection)",
-          "group": "inline@3"
+          "group": "2_manage@5"
         },
         {
           "command": "byrdsnestApiClient.assignProfileScope",
@@ -461,17 +518,7 @@
         {
           "command": "byrdsnestApiClient.cloneRequest",
           "when": "(view == byrdsnestCollections || view == blueByrdCollections) && (viewItem == byrdsnest.request || viewItem == bluebyrd.request)",
-          "group": "inline@1"
-        },
-        {
-          "command": "byrdsnestApiClient.cloneRequest",
-          "when": "(view == byrdsnestCollections || view == blueByrdCollections) && (viewItem == byrdsnest.request || viewItem == bluebyrd.request)",
           "group": "2_manage@1"
-        },
-        {
-          "command": "byrdsnestApiClient.cloneRequest",
-          "when": "(view == byrdsnestApiClientExplorer || view == blueByrdApiClientExplorer) && (viewItem == byrdsnest.request || viewItem == bluebyrd.request)",
-          "group": "inline@1"
         },
         {
           "command": "byrdsnestApiClient.cloneRequest",
@@ -484,11 +531,6 @@
           "group": "1_settings@1"
         },
         {
-          "command": "byrdsnestApiClient.renameRequest",
-          "when": "((view == byrdsnestCollections || view == blueByrdCollections) || (view == byrdsnestApiClientExplorer || view == blueByrdApiClientExplorer)) && (viewItem == byrdsnest.request || viewItem == bluebyrd.request)",
-          "group": "inline@2"
-        },
-        {
           "command": "byrdsnestApiClient.editCollection",
           "when": "(view == byrdsnestCollections || view == blueByrdCollections) && (viewItem == byrdsnest.collection || viewItem == bluebyrd.collection)",
           "group": "1_settings"
@@ -499,14 +541,9 @@
           "group": "1_settings"
         },
         {
-          "command": "byrdsnestApiClient.editFolder",
-          "when": "((view == byrdsnestCollections || view == blueByrdCollections) || (view == byrdsnestApiClientExplorer || view == blueByrdApiClientExplorer)) && (viewItem == byrdsnest.folder || viewItem == bluebyrd.folder)",
-          "group": "inline@1"
-        },
-        {
           "command": "byrdsnestApiClient.deleteItem",
           "when": "(view == byrdsnestCollections || view == blueByrdCollections) && ((viewItem == byrdsnest.request || viewItem == bluebyrd.request) || (viewItem == byrdsnest.folder || viewItem == bluebyrd.folder) || (viewItem == byrdsnest.collection || viewItem == bluebyrd.collection))",
-          "group": "inline@9"
+          "group": "9_delete"
         },
         {
           "command": "byrdsnestApiClient.moveItemUp",
@@ -536,7 +573,7 @@
         {
           "command": "byrdsnestApiClient.deleteItem",
           "when": "(view == byrdsnestTools || view == blueByrdTools || view == blueByrdHistory) && (viewItem == byrdsnest.historyItem || viewItem == bluebyrd.historyItem)",
-          "group": "inline@9"
+          "group": "9_delete"
         }
       ]
     }

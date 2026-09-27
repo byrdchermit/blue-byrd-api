@@ -422,6 +422,10 @@ FodyWeavers.xsd
 *.vsix
 dist/
 
+# Backup and recovery exports
+*-backup*.json
+*-recovered*.json
+
 # Windows Installer files from build outputs
 *.cab
 *.msi

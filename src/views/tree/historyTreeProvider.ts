@@ -32,7 +32,9 @@ export class BlueByrdToolsTreeProvider
   }
 
   public getChildren(element?: BlueByrdTreeItem): BlueByrdTreeItem[] {
-    if (element) return [];
+    if (element) {
+      return [];
+    }
 
     const history = this.state.history || [];
     const count = history.length;
@@ -43,27 +45,32 @@ export class BlueByrdToolsTreeProvider
 
     const items: BlueByrdTreeItem[] = [];
 
-    // 1. History Inspector
-    const historyItem = new BlueByrdTreeItem(
-      'History Inspector',
-      'history',
-      'tool-history-inspector',
+    // Active profile name calculation
+    const activeProfileId = this.state.activeProfileId;
+    const activeProfile = activeProfileId && activeProfileId !== 'all' && activeProfileId !== 'global'
+      ? this.stateManager.getProfile(activeProfileId)
+      : undefined;
+    const activeProfileName = activeProfile ? activeProfile.name : 'Shared / Global';
+
+    // 1. Manage Profiles & Settings
+    const settingsItem = new BlueByrdTreeItem(
+      'Manage Profiles & Settings...',
+      'profile',
+      'tool-manage-profiles-settings',
       undefined,
       undefined,
       [],
       {
-        title: 'Open History Inspector',
-        command: 'byrdsnestApiClient.openHistoryPanel',
+        title: 'Open Settings & Profile Manager',
+        command: 'byrdsnestApiClient.openSettings',
         arguments: [],
       },
-      count > 0 ? runStr : 'No runs recorded',
+      `Active: ${activeProfileName}`,
       vscode.TreeItemCollapsibleState.None
     );
-    historyItem.iconPath = new vscode.ThemeIcon('history');
-    historyItem.tooltip = count > 0
-      ? `Click to open History Inspector (${runStr})`
-      : 'Click to open History Inspector';
-    items.push(historyItem);
+    settingsItem.iconPath = new vscode.ThemeIcon('gear');
+    settingsItem.tooltip = `Open Settings & Profile Manager (Active profile: ${activeProfileName})`;
+    items.push(settingsItem);
 
     // 2. OAuth Token Vault
     const tokenVaultItem = new BlueByrdTreeItem(
@@ -84,6 +91,28 @@ export class BlueByrdToolsTreeProvider
     tokenVaultItem.iconPath = new vscode.ThemeIcon('key');
     tokenVaultItem.tooltip = 'Manage active OAuth 2.0 access tokens and session credentials';
     items.push(tokenVaultItem);
+
+    // 4. History Inspector
+    const historyItem = new BlueByrdTreeItem(
+      'History Inspector',
+      'history',
+      'tool-history-inspector',
+      undefined,
+      undefined,
+      [],
+      {
+        title: 'Open History Inspector',
+        command: 'byrdsnestApiClient.openHistoryPanel',
+        arguments: [],
+      },
+      count > 0 ? runStr : 'No runs recorded',
+      vscode.TreeItemCollapsibleState.None
+    );
+    historyItem.iconPath = new vscode.ThemeIcon('history');
+    historyItem.tooltip = count > 0
+      ? `Click to open History Inspector (${runStr})`
+      : 'Click to open History Inspector';
+    items.push(historyItem);
 
     // 3. Import from cURL
     const curlItem = new BlueByrdTreeItem(

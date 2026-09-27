@@ -1,4 +1,4 @@
-import { Collection, CollectionFolder, EnvironmentConfig, Profile, StoredToken } from '../../types';
+import { Collection, CollectionFolder, DEFAULT_PROFILE_COLORS, EnvironmentConfig, Profile, StoredToken } from '../../types';
 import { renderAuthCss, renderAuthFieldsHtml, getSharedAuthClientScript } from './sharedAuthHtml';
 
 export function getSettingsPanelHtml(
@@ -6,7 +6,7 @@ export function getSettingsPanelHtml(
   item: Profile | EnvironmentConfig | Collection | CollectionFolder | undefined,
   displayName: string,
   collectionName?: string,
-  allEnvironments?: Array<{ id: string; name: string }>,
+  allEnvironments?: Array<{ id: string; name: string; baseUrl?: string; inheritsFrom?: string }>,
   allProfiles?: Array<{ id: string; name: string }>,
   availableTokens: StoredToken[] = []
 ): string {
@@ -19,6 +19,10 @@ export function getSettingsPanelHtml(
   const env = isEnv ? (item as EnvironmentConfig) : undefined;
   const col = isCol ? (item as Collection) : undefined;
   const folder = isFolder ? (item as CollectionFolder) : undefined;
+  const profColor = profile?.color || (item as any)?.color || '#3b82f6';
+
+  const parentEnv = (allEnvironments || []).find(e => e.id === item?.inheritsFrom || e.name === item?.inheritsFrom);
+  const parentBaseUrl = parentEnv?.baseUrl || '';
 
   const getAuth = (): any => {
     if (isProfile) return profile?.auth;
@@ -87,7 +91,7 @@ export function getSettingsPanelHtml(
       --border: var(--vscode-panel-border, var(--vscode-input-border, #3c3c3c));
       --text: var(--vscode-editor-foreground, #cccccc);
       --muted: var(--vscode-descriptionForeground, #8c8c8c);
-      --primary: var(--vscode-button-background, #0e639c);
+      --primary: ${isProfile && profColor ? profColor : 'var(--vscode-button-background, #0e639c)'};
       --primary-hover: var(--vscode-button-hoverBackground, #1177bb);
       --primary-fg: var(--vscode-button-foreground, #ffffff);
       --success: var(--vscode-testing-iconPassed, #4ec9b0);
@@ -258,21 +262,30 @@ export function getSettingsPanelHtml(
       background: transparent;
       border: none;
       border-bottom: 2px solid transparent;
+      border-top-left-radius: 4px;
+      border-top-right-radius: 4px;
+      border-bottom-left-radius: 0;
+      border-bottom-right-radius: 0;
+      margin-bottom: -1px;
       color: var(--muted);
       padding: 8px 14px;
       font-size: 12px;
-      font-weight: 600;
+      font-weight: 500;
       cursor: pointer;
       display: flex;
       align-items: center;
       gap: 6px;
       transition: all 0.15s ease;
     }
-    .tab-btn:hover { color: var(--text); }
+    .tab-btn:hover {
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.03);
+    }
     .tab-btn.active {
       color: var(--text);
+      font-weight: 600;
       border-bottom-color: var(--primary);
-      background: rgba(255,255,255,0.03);
+      background: rgba(255, 255, 255, 0.05);
     }
     .tab-badge {
       font-size: 10px;
@@ -384,20 +397,54 @@ export function getSettingsPanelHtml(
       </div>
     </header>
 
+    ${isProfile ? `
+    <!-- Profile Color Theme Banner -->
+    <div class="env-url-banner">
+      <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+        <div style="flex: 1; min-width: 280px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <label style="margin-bottom: 0;">Profile Color Theme</label>
+            <span id="prof-theme-preview" class="pill" style="background: ${escapeHtml(profColor)}22; color: ${escapeHtml(profColor)}; border: 1px solid ${escapeHtml(profColor)}55; font-size: 11px; font-weight: 600;">
+              ● ${escapeHtml(displayName)}
+            </span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            ${DEFAULT_PROFILE_COLORS.map(c => {
+              const isSelected = profColor.toLowerCase() === c.value.toLowerCase();
+              return `<button type="button" class="color-swatch-btn ${isSelected ? 'active' : ''}" data-color="${c.value}" title="${c.name} (${c.value})" style="width: 24px; height: 24px; border-radius: 50%; background: ${c.value}; border: 2px solid ${isSelected ? 'var(--text, #ffffff)' : 'transparent'}; cursor: pointer; transition: transform 0.15s, border-color 0.15s; outline: none; box-shadow: 0 1px 3px rgba(0,0,0,0.3); transform: ${isSelected ? 'scale(1.15)' : 'scale(1)'};"></button>`;
+            }).join('')}
+            <div style="display: inline-flex; align-items: center; gap: 6px; margin-left: 6px; padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.04); border: 1px solid var(--border);">
+              <input type="color" id="prof-color-picker" value="${escapeHtml(profColor)}" style="width: 22px; height: 22px; padding: 0; border: none; background: transparent; cursor: pointer; border-radius: 3px;" />
+              <input type="text" id="prof-color-input" class="env-url-input" value="${escapeHtml(profColor)}" style="width: 78px; padding: 2px 6px; font-family: monospace; font-size: 11px; height: 22px;" placeholder="#3b82f6" />
+            </div>
+          </div>
+          <span class="help-hint" style="margin-top: 4px;">Tints the status bar, sidebar indicators, request header badges, and webview accents when this profile is active.</span>
+        </div>
+      </div>
+    </div>
+    ` : ''}
+
     ${isEnv ? `
     <!-- Environment Base URL, Parent & Profile Scope Banner -->
     <div class="env-url-banner">
       <div style="display: flex; gap: 12px; flex-wrap: wrap;">
         <div style="flex: 2; min-width: 240px;">
-          <label for="base-url">Base URL</label>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <label for="base-url" style="margin-bottom: 0;">Base URL</label>
+            <label style="font-size: 11px; display: inline-flex; align-items: center; gap: 5px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--vscode-foreground);">
+              <input type="checkbox" id="base-url-disabled" ${env?.baseUrlDisabled === true ? 'checked' : ''} style="margin: 0; cursor: pointer;" />
+              <span>Disable Base URL</span>
+            </label>
+          </div>
           <input
             id="base-url"
             class="env-url-input"
             type="text"
             value="${escapeHtml(env?.baseUrl || '')}"
-            placeholder="https://api.example.com"
+            placeholder="${parentBaseUrl ? `Inherited: ${escapeHtml(parentBaseUrl)}` : 'https://api.example.com'}"
+            ${env?.baseUrlDisabled === true ? 'disabled style="opacity: 0.55; text-decoration: line-through;"' : ''}
           />
-          <span class="help-hint">Available as {{baseUrl}} across requests</span>
+          <span id="base-url-hint" class="help-hint">${parentBaseUrl ? `Inherits from parent (${escapeHtml(parentBaseUrl)}) when left blank` : (env?.baseUrlDisabled === true ? 'Base URL is currently disabled for this environment' : 'Available as {{baseUrl}} across requests')}</span>
         </div>
         <div style="flex: 1; min-width: 180px;">
           <label for="env-parent">Parent Environment</label>
@@ -425,10 +472,36 @@ export function getSettingsPanelHtml(
     ` : ''}
 
     ${isCol ? `
-    <!-- Collection Profile Scope Banner -->
+    <!-- Collection Base URL & Profile Scope Banner -->
     <div class="env-url-banner">
       <div style="display: flex; gap: 12px; flex-wrap: wrap;">
-        <div style="flex: 1; min-width: 200px;">
+        <div style="flex: 2; min-width: 240px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <label for="col-base-url" style="margin-bottom: 0;">Collection Base URL</label>
+            <label style="font-size: 11px; display: inline-flex; align-items: center; gap: 5px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--vscode-foreground);">
+              <input type="checkbox" id="col-base-url-disabled" ${(item as any)?.baseUrlDisabled === true ? 'checked' : ''} style="margin: 0; cursor: pointer;" />
+              <span>Disable Base URL</span>
+            </label>
+          </div>
+          <input
+            id="col-base-url"
+            class="env-url-input"
+            type="text"
+            value="${escapeHtml((item as any)?.baseUrl || (item as any)?.variables?.['baseUrl'] || '')}"
+            placeholder="e.g. https://api.example.com or http://localhost:8980"
+            ${(item as any)?.baseUrlDisabled === true ? 'disabled style="opacity: 0.55; text-decoration: line-through;"' : ''}
+          />
+          <span id="col-base-url-hint" class="help-hint">${(item as any)?.baseUrlDisabled === true ? 'Base URL is currently disabled for this collection' : 'Dedicated Base URL for all requests in this collection'}</span>
+        </div>
+        <div style="flex: 1.5; min-width: 220px;">
+          <label for="col-base-url-pref">Base URL Priority</label>
+          <select id="col-base-url-pref" class="env-url-input" style="height: 32px; cursor: pointer;">
+            <option value="collection" ${(item as any)?.baseUrlPreference !== 'environment' ? 'selected' : ''}>Collection Base URL takes precedence</option>
+            <option value="environment" ${(item as any)?.baseUrlPreference === 'environment' ? 'selected' : ''}>Active Environment overrides Collection</option>
+          </select>
+          <span class="help-hint">Choose whether active environment overrides this collection</span>
+        </div>
+        <div style="flex: 1; min-width: 180px;">
           <label for="col-profile">Profile Scope</label>
           <select id="col-profile" class="env-url-input" style="height: 32px; cursor: pointer;">
             <option value="">Global / Shared (All Profiles)</option>
@@ -436,7 +509,7 @@ export function getSettingsPanelHtml(
               .map(p => `<option value="${escapeHtml(p.id)}" ${p.id === (item as any)?.profileId ? 'selected' : ''}>${escapeHtml(p.name)}</option>`)
               .join('')}
           </select>
-          <span class="help-hint">Scope this collection to a specific profile or share across all profiles</span>
+          <span class="help-hint">Scope to profile or share globally</span>
         </div>
       </div>
     </div>
@@ -457,6 +530,11 @@ export function getSettingsPanelHtml(
         <button class="tab-btn" data-tab="tab-notes">
           Documentation & Notes
         </button>
+        ${isProfile ? `
+        <button class="tab-btn" data-tab="tab-guards">
+          🛡️ Safety Guards
+        </button>
+        ` : ''}
       </nav>
 
       <!-- Tab 1: Interactive Variables Table -->
@@ -525,6 +603,83 @@ export function getSettingsPanelHtml(
           placeholder="Add notes, usage guidelines, or documentation here..."
         >${escapeHtml(notes)}</textarea>
       </section>
+
+      ${isProfile ? `
+      <!-- Tab 5: Safety Guards -->
+      <section id="tab-guards" class="tab-content">
+        <div style="font-size: 13px; font-weight: 600; margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
+          <span>🛡️ Touch Points &amp; Safety Warnings</span>
+          <span class="pill" style="font-size: 10px; background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3);">Safety Protection</span>
+        </div>
+        <p style="font-size: 11px; color: var(--muted); margin-bottom: 14px; line-height: 1.5;">
+          Configure touch-point confirmation warnings and strictly block destructive actions (like <code>DELETE</code> or <code>PUT</code>) whenever this profile is active.
+        </p>
+
+        <!-- Enable Guards Toggle -->
+        <div style="margin-bottom: 14px; padding: 10px 12px; background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 6px;">
+          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12px; font-weight: 600;">
+            <input type="checkbox" id="guard-enabled" ${profile?.guards?.enabled ? 'checked' : ''} style="cursor: pointer;" />
+            <span>Enable Safety Guards for this Profile</span>
+          </label>
+          <div style="font-size: 11px; color: var(--muted); margin-left: 22px; margin-top: 4px;">
+            When enabled, all requests dispatched under this profile pass through pre-send safety validation.
+          </div>
+        </div>
+
+        <!-- Guard Settings Container -->
+        <div id="guard-settings-section" style="${profile?.guards?.enabled ? '' : 'opacity: 0.5; pointer-events: none;'} display: flex; flex-direction: column; gap: 14px;">
+          
+          <!-- Touch Point 1: Confirmation Warning -->
+          <div style="padding: 10px 12px; background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 6px;">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12px; font-weight: 600; margin-bottom: 8px;">
+              <input type="checkbox" id="guard-warn-send" ${profile?.guards?.warnBeforeSend ? 'checked' : ''} style="cursor: pointer;" />
+              <span>⚠️ Prompt Confirmation Warning Before Sending Any Request</span>
+            </label>
+            <div style="margin-left: 22px;">
+              <label style="font-size: 11px; color: var(--muted); display: block; margin-bottom: 4px;">Custom Warning Dialog Message</label>
+              <input id="guard-warn-msg" class="form-input" type="text" placeholder="e.g., ⚠️ PRODUCTION PROFILE: Verify endpoint &amp; payload before proceeding!" value="${escapeHtml(profile?.guards?.warnMessage || '')}" style="font-size: 12px; width: 100%;" />
+            </div>
+          </div>
+
+          <!-- Touch Point 2: Blocked HTTP Methods -->
+          <div style="padding: 10px 12px; background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 6px;">
+            <div style="font-size: 12px; font-weight: 600; margin-bottom: 4px;">⛔ Block Destructive HTTP Methods</div>
+            <div style="font-size: 11px; color: var(--muted); margin-bottom: 10px;">
+              Select HTTP methods that should be strictly blocked under this profile.
+            </div>
+            <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+              ${['DELETE', 'PUT', 'PATCH', 'POST'].map(m => {
+                const isBlocked = (profile?.guards?.blockedMethods || []).map(b => b.toUpperCase()).includes(m);
+                return `
+                  <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12px; font-weight: 500;">
+                    <input type="checkbox" class="guard-method-cb" value="${m}" ${isBlocked ? 'checked' : ''} style="cursor: pointer;" />
+                    <span style="font-family: monospace; font-weight: 600; color: ${m === 'DELETE' ? '#ef4444' : m === 'PUT' ? '#f59e0b' : m === 'PATCH' ? '#eab308' : '#3b82f6'};">${m}</span>
+                  </label>
+                `;
+              }).join('')}
+            </div>
+          </div>
+
+          <!-- Touch Point 3: Keyword Confirmation for Blocked Actions -->
+          <div style="padding: 10px 12px; background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 6px;">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12px; font-weight: 600; margin-bottom: 8px;">
+              <input type="checkbox" id="guard-keyword-req" ${profile?.guards?.requireKeywordConfirmation ? 'checked' : ''} style="cursor: pointer;" />
+              <span>🔐 Allow Blocked Methods Only If User Types Confirmation Keyword</span>
+            </label>
+            <div style="margin-left: 22px;">
+              <div style="font-size: 11px; color: var(--muted); margin-bottom: 6px;">
+                If unchecked, blocked methods are aborted immediately. If checked, an input box appears requiring the exact keyword to proceed:
+              </div>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <span style="font-size: 11px; color: var(--muted);">Keyword:</span>
+                <input id="guard-keyword" class="form-input" type="text" placeholder="e.g., PROD or CONFIRM" value="${escapeHtml(profile?.guards?.confirmationKeyword || 'CONFIRM')}" style="font-size: 12px; width: 160px; font-family: monospace; text-transform: uppercase;" />
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+      ` : ''}
     </main>
   </div>
 
@@ -697,6 +852,118 @@ export function getSettingsPanelHtml(
         // --- Dynamic Auth Fields & Visibility ---
         ${getSharedAuthClientScript()}
 
+        // --- Dynamic Parent Base URL Update ---
+        const envParentSelect = document.getElementById('env-parent');
+        const baseUrlInput = document.getElementById('base-url');
+        const baseUrlHint = document.getElementById('base-url-hint');
+        const allEnvsData = ${JSON.stringify(allEnvironments || []).replace(/</g, '\\u003c')};
+
+        if (envParentSelect && baseUrlInput) {
+          envParentSelect.addEventListener('change', () => {
+            const selectedParentId = envParentSelect.value;
+            const parentObj = allEnvsData.find(e => e.id === selectedParentId || e.name === selectedParentId);
+            if (parentObj && parentObj.baseUrl) {
+              baseUrlInput.placeholder = 'Inherited: ' + parentObj.baseUrl;
+              if (baseUrlHint) baseUrlHint.textContent = 'Inherits from parent (' + parentObj.baseUrl + ') when left blank';
+            } else if (selectedParentId) {
+              baseUrlInput.placeholder = 'Inherited from parent (empty)';
+              if (baseUrlHint) baseUrlHint.textContent = 'Inherits from parent when left blank';
+            } else {
+              baseUrlInput.placeholder = 'https://api.example.com';
+              if (baseUrlHint) baseUrlHint.textContent = 'Available as {{baseUrl}} across requests';
+            }
+          });
+        }
+
+        // --- Dynamic Base URL Disabled Toggles ---
+        const envBaseUrlDisabledCheckbox = document.getElementById('base-url-disabled');
+        if (envBaseUrlDisabledCheckbox && baseUrlInput) {
+          envBaseUrlDisabledCheckbox.addEventListener('change', () => {
+            if (envBaseUrlDisabledCheckbox.checked) {
+              baseUrlInput.disabled = true;
+              baseUrlInput.style.opacity = '0.55';
+              baseUrlInput.style.textDecoration = 'line-through';
+              if (baseUrlHint) baseUrlHint.textContent = 'Base URL is currently disabled for this environment';
+            } else {
+              baseUrlInput.disabled = false;
+              baseUrlInput.style.opacity = '1';
+              baseUrlInput.style.textDecoration = 'none';
+              if (baseUrlHint) baseUrlHint.textContent = 'Available as {{baseUrl}} across requests';
+            }
+          });
+        }
+
+        const colBaseUrlDisabledCheckbox = document.getElementById('col-base-url-disabled');
+        const colBaseUrlInput = document.getElementById('col-base-url');
+        const colBaseUrlHint = document.getElementById('col-base-url-hint');
+        if (colBaseUrlDisabledCheckbox && colBaseUrlInput) {
+          colBaseUrlDisabledCheckbox.addEventListener('change', () => {
+            if (colBaseUrlDisabledCheckbox.checked) {
+              colBaseUrlInput.disabled = true;
+              colBaseUrlInput.style.opacity = '0.55';
+              colBaseUrlInput.style.textDecoration = 'line-through';
+              if (colBaseUrlHint) colBaseUrlHint.textContent = 'Base URL is currently disabled for this collection';
+            } else {
+              colBaseUrlInput.disabled = false;
+              colBaseUrlInput.style.opacity = '1';
+              colBaseUrlInput.style.textDecoration = 'none';
+              if (colBaseUrlHint) colBaseUrlHint.textContent = 'Dedicated Base URL for all requests in this collection';
+            }
+          });
+        }
+
+        // --- Color Theme swatches & pickers (Profile Settings) ---
+        const colorPicker = document.getElementById('prof-color-picker');
+        const colorInput = document.getElementById('prof-color-input');
+        const themePreview = document.getElementById('prof-theme-preview');
+        const swatchBtns = document.querySelectorAll('.color-swatch-btn');
+
+        function updateColorTheme(newHex) {
+          if (!newHex) return;
+          if (colorPicker) colorPicker.value = newHex;
+          if (colorInput) colorInput.value = newHex;
+          if (themePreview) {
+            themePreview.style.background = newHex + '22';
+            themePreview.style.color = newHex;
+            themePreview.style.borderColor = newHex + '55';
+          }
+          document.documentElement.style.setProperty('--primary', newHex);
+          swatchBtns.forEach(btn => {
+            const match = (btn.getAttribute('data-color') || '').toLowerCase() === newHex.toLowerCase();
+            btn.style.borderColor = match ? 'var(--text, #ffffff)' : 'transparent';
+            btn.style.transform = match ? 'scale(1.15)' : 'scale(1)';
+          });
+        }
+
+        swatchBtns.forEach(btn => {
+          btn.addEventListener('click', () => {
+            const color = btn.getAttribute('data-color');
+            if (color) updateColorTheme(color);
+          });
+        });
+
+        if (colorPicker) {
+          colorPicker.addEventListener('input', () => updateColorTheme(colorPicker.value));
+        }
+        if (colorInput) {
+          colorInput.addEventListener('input', () => {
+            const val = colorInput.value.trim();
+            if (/^#[0-9a-fA-F]{6}$/.test(val)) {
+              updateColorTheme(val);
+            }
+          });
+        }
+
+        // Safety Guards toggle
+        const guardEnabledCb = document.getElementById('guard-enabled');
+        const guardSection = document.getElementById('guard-settings-section');
+        if (guardEnabledCb && guardSection) {
+          guardEnabledCb.addEventListener('change', () => {
+            guardSection.style.opacity = guardEnabledCb.checked ? '1' : '0.5';
+            guardSection.style.pointerEvents = guardEnabledCb.checked ? 'auto' : 'none';
+          });
+        }
+
         // --- Save & Cancel Actions ---
         document.getElementById('btn-cancel').addEventListener('click', () => {
           vscode.postMessage({ type: 'cancel' });
@@ -704,8 +971,14 @@ export function getSettingsPanelHtml(
 
         document.getElementById('btn-save').addEventListener('click', () => {
           const name = (document.getElementById('item-name').value || '').trim();
-          const baseUrlInput = document.getElementById('base-url');
+          const baseUrlInput = document.getElementById('base-url') || document.getElementById('col-base-url');
           const baseUrl = baseUrlInput ? baseUrlInput.value.trim() : undefined;
+          const baseUrlDisabled = !!(
+            (envBaseUrlDisabledCheckbox && envBaseUrlDisabledCheckbox.checked) ||
+            (colBaseUrlDisabledCheckbox && colBaseUrlDisabledCheckbox.checked)
+          );
+          const colBaseUrlPref = document.getElementById('col-base-url-pref');
+          const baseUrlPreference = colBaseUrlPref ? colBaseUrlPref.value : undefined;
           const envParentSelect = document.getElementById('env-parent');
           const inheritsFrom = envParentSelect ? envParentSelect.value.trim() || undefined : undefined;
           const profileScopeSelect = document.getElementById('env-profile') || document.getElementById('col-profile');
@@ -714,6 +987,18 @@ export function getSettingsPanelHtml(
           const inheritCheck = document.getElementById('auth-inherit');
           const inheritAuth = inheritCheck ? inheritCheck.checked : true;
           const notes = (document.getElementById('item-notes').value || '').trim();
+
+          let guards = undefined;
+          if (guardEnabledCb) {
+            guards = {
+              enabled: guardEnabledCb.checked,
+              warnBeforeSend: document.getElementById('guard-warn-send')?.checked || false,
+              warnMessage: document.getElementById('guard-warn-msg')?.value?.trim() || '',
+              blockedMethods: Array.from(document.querySelectorAll('.guard-method-cb:checked')).map(cb => cb.value),
+              requireKeywordConfirmation: document.getElementById('guard-keyword-req')?.checked || false,
+              confirmationKeyword: document.getElementById('guard-keyword')?.value?.trim() || 'CONFIRM'
+            };
+          }
 
           // Gather non-empty enabled variables into a dictionary
           const variables = {};
@@ -741,7 +1026,10 @@ export function getSettingsPanelHtml(
             type: 'saveSettings',
             payload: {
               name,
+              color: document.getElementById('prof-color-input')?.value || document.getElementById('prof-color-picker')?.value || undefined,
               baseUrl,
+              baseUrlDisabled,
+              baseUrlPreference,
               inheritsFrom,
               profileId,
               authType: authValues.type,
@@ -762,10 +1050,32 @@ export function getSettingsPanelHtml(
               inheritAuth,
               variables,
               headers,
-              notes
+              notes,
+              guards
             }
           });
         });
+
+        // Intercept Ctrl+Z and Ctrl+Y in capture phase so VS Code cannot steal them
+        window.addEventListener('keydown', (e) => {
+          const isZ = e.key === 'z' || e.key === 'Z';
+          const isY = e.key === 'y' || e.key === 'Y';
+          if ((e.ctrlKey || e.metaKey) && (isZ || isY)) {
+            const isRedo = isY || (isZ && e.shiftKey);
+            const activeEl = document.activeElement;
+            const isTextInput = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA');
+
+            if (isTextInput) {
+              try {
+                const handled = document.execCommand(isRedo ? 'redo' : 'undo');
+                if (handled) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }
+              } catch (_) {}
+            }
+          }
+        }, true);
       } catch (err) {
         console.error('[byrdsnest api client Settings] Webview runtime error:', err);
       }

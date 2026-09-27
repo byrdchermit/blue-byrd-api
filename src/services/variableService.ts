@@ -127,14 +127,16 @@ export class VariableService {
     environmentNameOrId?: string,
     collectionNameOrId?: string,
     folderNameOrId?: string,
-    requestVariables?: VariableItem[] | Record<string, string>
+    requestVariables?: VariableItem[] | Record<string, string>,
+    baseUrlPreference?: 'collection' | 'environment' | 'none'
   ): Record<string, string> {
     const detail = this.resolveVariablesDetailed(
       profileNameOrId,
       environmentNameOrId,
       collectionNameOrId,
       folderNameOrId,
-      requestVariables
+      requestVariables,
+      baseUrlPreference
     );
     return detail.resolved;
   }
@@ -147,7 +149,8 @@ export class VariableService {
     environmentNameOrId?: string,
     collectionNameOrId?: string,
     folderNameOrId?: string,
-    requestVariables?: VariableItem[] | Record<string, string>
+    requestVariables?: VariableItem[] | Record<string, string>,
+    baseUrlPreference?: 'collection' | 'environment' | 'none'
   ): VariableResolutionResult {
     const resolved: Record<string, string> = {};
     const inherited: InheritedVariableInfo[] = [];
@@ -170,7 +173,9 @@ export class VariableService {
     });
 
     // 1. Profile variables (global defaults)
-    const profile = this.stateManager.getProfile(profileNameOrId);
+    const activePid = this.stateManager.getActiveProfileId();
+    const targetProfileId = (profileNameOrId && profileNameOrId !== 'all') ? profileNameOrId : (activePid !== 'all' ? activePid : undefined);
+    const profile = this.stateManager.getProfile(targetProfileId);
     if (profile?.variables) {
       Object.entries(profile.variables).forEach(([k, v]) => {
         if (k && v !== undefined) {
@@ -186,21 +191,69 @@ export class VariableService {
       });
     }
 
-    // 2. Collection variables (collection defaults)
+    // 2. Collection variables & dedicated collection baseUrl
     const collection = this.stateManager.getCollection(collectionNameOrId);
-    if (collection?.variables) {
-      Object.entries(collection.variables).forEach(([k, v]) => {
-        if (k && v !== undefined) {
-          const val = String(v);
-          resolved[k] = val;
+    let collectionBaseUrl: string | undefined;
+    let preferCollectionBaseUrl = false;
+
+    if (collection) {
+      if (!collection.baseUrlDisabled) {
+        if (collection.baseUrl && collection.baseUrl.trim()) {
+          collectionBaseUrl = collection.baseUrl.trim().replace(/\/+$/, '');
+        } else if (collection.variables?.['baseUrl'] && collection.variables['baseUrl'].trim()) {
+          collectionBaseUrl = collection.variables['baseUrl'].trim().replace(/\/+$/, '');
+        }
+      }
+
+      if (baseUrlPreference) {
+        preferCollectionBaseUrl = baseUrlPreference === 'collection';
+      } else if (collection.baseUrlPreference) {
+        preferCollectionBaseUrl = collection.baseUrlPreference === 'collection';
+      } else if (collection.preferCollectionBaseUrl !== undefined) {
+        preferCollectionBaseUrl = !!collection.preferCollectionBaseUrl;
+      }
+
+      if (collectionBaseUrl) {
+        resolved['collectionBaseUrl'] = collectionBaseUrl;
+        inherited.push({
+          key: 'collectionBaseUrl',
+          value: collectionBaseUrl,
+          source: 'collection',
+          sourceName: `Collection: ${collection.name}`,
+        });
+        if (baseUrlPreference !== 'none') {
+          resolved['baseUrl'] = collectionBaseUrl;
           inherited.push({
-            key: k,
-            value: val,
+            key: 'baseUrl',
+            value: collectionBaseUrl,
             source: 'collection',
             sourceName: `Collection: ${collection.name}`,
           });
         }
-      });
+      } else if (collection.baseUrlDisabled && (collection.baseUrl || collection.variables?.['baseUrl'])) {
+        inherited.push({
+          key: 'baseUrl',
+          value: collection.baseUrl || collection.variables?.['baseUrl'] || '',
+          source: 'collection',
+          sourceName: `Collection: ${collection.name} (Disabled)`,
+          isOverridden: true,
+        });
+      }
+
+      if (collection.variables) {
+        Object.entries(collection.variables).forEach(([k, v]) => {
+          if (k && v !== undefined && k !== 'baseUrl') {
+            const val = String(v);
+            resolved[k] = val;
+            inherited.push({
+              key: k,
+              value: val,
+              source: 'collection',
+              sourceName: `Collection: ${collection!.name}`,
+            });
+          }
+        });
+      }
     }
 
     // 3. Folder variables (folder defaults)
@@ -209,19 +262,49 @@ export class VariableService {
       folder = collection.folders.find(
         (f) => f.id === folderNameOrId || f.name === folderNameOrId
       );
-      if (folder?.variables) {
-        Object.entries(folder.variables).forEach(([k, v]) => {
-          if (k && v !== undefined) {
-            const val = String(v);
-            resolved[k] = val;
+      if (folder) {
+        let folderBaseUrl: string | undefined;
+        if (!folder.baseUrlDisabled) {
+          if (folder.baseUrl && folder.baseUrl.trim()) {
+            folderBaseUrl = folder.baseUrl.trim().replace(/\/+$/, '');
+          } else if (folder.variables?.['baseUrl'] && folder.variables['baseUrl'].trim()) {
+            folderBaseUrl = folder.variables['baseUrl'].trim().replace(/\/+$/, '');
+          }
+        }
+
+        if (folderBaseUrl) {
+          collectionBaseUrl = folderBaseUrl;
+          if (folder.baseUrlPreference) {
+            preferCollectionBaseUrl = folder.baseUrlPreference === 'collection';
+          } else if (folder.preferCollectionBaseUrl !== undefined) {
+            preferCollectionBaseUrl = !!folder.preferCollectionBaseUrl;
+          }
+          resolved['collectionBaseUrl'] = folderBaseUrl;
+          if (baseUrlPreference !== 'none') {
+            resolved['baseUrl'] = folderBaseUrl;
             inherited.push({
-              key: k,
-              value: val,
+              key: 'baseUrl',
+              value: folderBaseUrl,
               source: 'folder',
-              sourceName: `Folder: ${folder!.name}`,
+              sourceName: `Folder: ${folder.name}`,
             });
           }
-        });
+        }
+
+        if (folder.variables) {
+          Object.entries(folder.variables).forEach(([k, v]) => {
+            if (k && v !== undefined && k !== 'baseUrl') {
+              const val = String(v);
+              resolved[k] = val;
+              inherited.push({
+                key: k,
+                value: val,
+                source: 'folder',
+                sourceName: `Folder: ${folder!.name}`,
+              });
+            }
+          });
+        }
       }
     }
 
@@ -233,14 +316,50 @@ export class VariableService {
       const sourceKind = isParent ? 'parent-environment' : 'environment';
       const sourceLabel = isParent ? `Parent Env: ${envName}` : `Env: ${envName}`;
 
-      if (env.baseUrl && env.baseUrl.trim()) {
+      if (!env.baseUrlDisabled && env.baseUrl && env.baseUrl.trim()) {
         const val = env.baseUrl.trim().replace(/\/+$/, '');
-        resolved['baseUrl'] = val;
+        resolved['envBaseUrl'] = val;
         inherited.push({
-          key: 'baseUrl',
+          key: 'envBaseUrl',
           value: val,
           source: sourceKind,
           sourceName: sourceLabel,
+        });
+
+        if (baseUrlPreference === 'none') {
+          // Base URL preference is disabled for this request
+          inherited.push({
+            key: 'baseUrl',
+            value: val,
+            source: sourceKind,
+            sourceName: sourceLabel,
+            isOverridden: true,
+          });
+        } else if (preferCollectionBaseUrl && collectionBaseUrl) {
+          // Collection explicitly preferred over Environment baseUrl
+          inherited.push({
+            key: 'baseUrl',
+            value: val,
+            source: sourceKind,
+            sourceName: sourceLabel,
+            isOverridden: true,
+          });
+        } else {
+          resolved['baseUrl'] = val;
+          inherited.push({
+            key: 'baseUrl',
+            value: val,
+            source: sourceKind,
+            sourceName: sourceLabel,
+          });
+        }
+      } else if (env.baseUrlDisabled && env.baseUrl) {
+        inherited.push({
+          key: 'baseUrl',
+          value: env.baseUrl,
+          source: sourceKind,
+          sourceName: `${sourceLabel} (Disabled)`,
+          isOverridden: true,
         });
       }
       if (env.apiKey && env.apiKey.trim()) {
@@ -256,6 +375,13 @@ export class VariableService {
       if (env.variables) {
         Object.entries(env.variables).forEach(([k, v]) => {
           if (k && v !== undefined) {
+            // Do not push duplicate baseUrl or apiKey if already handled from top-level env properties
+            if (k === 'baseUrl' && env.baseUrl && env.baseUrl.trim()) {
+              return;
+            }
+            if (k === 'apiKey' && env.apiKey && env.apiKey.trim()) {
+              return;
+            }
             const val = String(v);
             resolved[k] = val;
             inherited.push({
@@ -289,13 +415,24 @@ export class VariableService {
     }
 
     // Mark inherited items as overridden if a higher level (or request) overrides them
-    inherited.forEach((item) => {
-      if (item.source !== 'dynamic') {
-        if (overriddenKeys.includes(item.key) || resolved[item.key] !== item.value) {
-          item.isOverridden = true;
-        }
+    const seenActiveKeys = new Set<string>(overriddenKeys);
+    for (let i = inherited.length - 1; i >= 0; i--) {
+      if (inherited[i].source === 'dynamic') continue;
+      const k = inherited[i].key;
+
+      // If this item was already marked overridden/disabled when added (e.g. baseUrlDisabled, disabled tier),
+      // preserve it as overridden and DO NOT add to seenActiveKeys so it cannot hide an enabled lower tier.
+      if (inherited[i].isOverridden) {
+        continue;
       }
-    });
+
+      if (seenActiveKeys.has(k) || resolved[k] !== inherited[i].value) {
+        inherited[i].isOverridden = true;
+      } else {
+        // This is the active winning source for key k
+        seenActiveKeys.add(k);
+      }
+    }
 
     return {
       resolved,
@@ -305,20 +442,22 @@ export class VariableService {
   }
 
   /**
-   * Resolves the combined headers from Collection -> Folder -> Parent Environments -> Active Environment -> Request.
+   * Resolves the combined headers from Profile -> Collection -> Folder -> Parent Environments -> Active Environment -> Request.
    * Handles case-insensitive header overriding (Environment overrides Collection/Folder defaults).
    */
   public resolveHeaders(
     environmentNameOrId?: string,
     collectionNameOrId?: string,
     folderNameOrId?: string,
-    requestHeaders?: Record<string, string>
+    requestHeaders?: Record<string, string>,
+    profileNameOrId?: string
   ): Record<string, string> {
     const detail = this.resolveHeadersDetailed(
       environmentNameOrId,
       collectionNameOrId,
       folderNameOrId,
-      requestHeaders
+      requestHeaders,
+      profileNameOrId
     );
     return detail.merged;
   }
@@ -330,7 +469,8 @@ export class VariableService {
     environmentNameOrId?: string,
     collectionNameOrId?: string,
     folderNameOrId?: string,
-    requestHeaders: Record<string, string> = {}
+    requestHeaders: Record<string, string> = {},
+    profileNameOrId?: string
   ): HeaderResolutionResult {
     const merged: Record<string, string> = {};
     const inherited: InheritedHeaderInfo[] = [];
@@ -345,6 +485,24 @@ export class VariableService {
       }
       merged[key] = value;
     };
+
+    // 0. Profile headers (global profile defaults)
+    const activePid = this.stateManager.getActiveProfileId();
+    const targetProfileId = (profileNameOrId && profileNameOrId !== 'all') ? profileNameOrId : (activePid !== 'all' ? activePid : undefined);
+    const profile = this.stateManager.getProfile(targetProfileId);
+    if (profile?.headers) {
+      Object.entries(profile.headers).forEach(([k, v]) => {
+        if (k && v !== undefined) {
+          setHeader(k, String(v));
+          inherited.push({
+            key: k,
+            value: String(v),
+            source: 'profile',
+            sourceName: `Profile: ${profile.name}`,
+          });
+        }
+      });
+    }
 
     // 1. Collection headers (collection defaults)
     const collection = this.stateManager.getCollection(collectionNameOrId);
@@ -416,12 +574,19 @@ export class VariableService {
       }
     });
 
-    // Mark overridden
-    inherited.forEach((item) => {
-      if (requestKeyLowers.has(item.key.toLowerCase())) {
-        item.isOverridden = true;
+    // Mark overridden in inherited headers (traversing from highest precedence to lowest)
+    const seenLowerKeys = new Set<string>(requestKeyLowers);
+    for (let i = inherited.length - 1; i >= 0; i--) {
+      if (inherited[i].isOverridden) {
+        continue;
       }
-    });
+      const lower = inherited[i].key.toLowerCase();
+      if (seenLowerKeys.has(lower)) {
+        inherited[i].isOverridden = true;
+      } else {
+        seenLowerKeys.add(lower);
+      }
+    }
 
     return {
       merged,

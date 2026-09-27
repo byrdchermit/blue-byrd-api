@@ -429,7 +429,7 @@ export function getHistoryPanelHtml(
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 8px 14px;
+      padding: 0 14px;
       background: rgba(255,255,255,0.02);
       border-bottom: 1px solid var(--border);
     }
@@ -439,25 +439,39 @@ export function getHistoryPanelHtml(
       text-transform: uppercase;
       letter-spacing: 0.5px;
       color: var(--muted);
+      padding: 10px 0;
     }
 
     .tab-nav {
       display: flex;
-      gap: 4px;
+      gap: 2px;
+      align-self: flex-end;
     }
     .tab-btn {
       background: transparent;
       border: none;
+      border-bottom: 2px solid transparent;
+      border-top-left-radius: 4px;
+      border-top-right-radius: 4px;
+      border-bottom-left-radius: 0;
+      border-bottom-right-radius: 0;
+      margin-bottom: -1px;
       color: var(--muted);
       font-size: 12px;
-      padding: 4px 10px;
-      border-radius: 4px;
+      font-weight: 500;
+      padding: 7px 12px;
       cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .tab-btn:hover {
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.03);
     }
     .tab-btn.active {
       color: var(--text);
-      background: var(--surface);
       font-weight: 600;
+      border-bottom-color: var(--primary);
+      background: rgba(255, 255, 255, 0.05);
     }
 
     .section-body {

@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
 import {
   AppState,
   AuthSettings,
@@ -17,6 +19,8 @@ export class BlueByrdStateManager {
   private readonly context: vscode.ExtensionContext;
   private readonly storageKey = 'byrdsnest-api-state';
   private readonly legacyStorageKey = 'blue-byrd-state';
+  private readonly _onDidChangeState = new vscode.EventEmitter<AppState>();
+  public readonly onDidChangeState: vscode.Event<AppState> = this._onDidChangeState.event;
 
   constructor(context: vscode.ExtensionContext) {
     this.context = context;
@@ -32,6 +36,7 @@ export class BlueByrdStateManager {
         {
           id: 'profile-dev',
           name: 'Development',
+          color: '#10b981',
           auth: { type: 'bearer', token: 'dev-token-sample', headerName: 'Authorization' },
           variables: {
             authSecret: 'super-secret-key',
@@ -41,6 +46,7 @@ export class BlueByrdStateManager {
         {
           id: 'profile-staging',
           name: 'Staging',
+          color: '#f59e0b',
           auth: { type: 'apiKey', keyName: 'x-api-key', headerName: 'x-api-key', token: 'staging-api-key' },
           variables: {
             version: 'v1',
@@ -49,6 +55,7 @@ export class BlueByrdStateManager {
         {
           id: 'profile-prod',
           name: 'Production',
+          color: '#ef4444',
           auth: { type: 'bearer', token: '', headerName: 'Authorization' },
           variables: {
             version: 'v1',
@@ -61,7 +68,6 @@ export class BlueByrdStateManager {
           baseUrl: 'https://jsonplaceholder.typicode.com',
           apiKey: 'local-key',
           variables: {
-            baseUrl: 'https://jsonplaceholder.typicode.com',
             userId: '1',
           },
           profileId: 'profile-dev',
@@ -71,7 +77,6 @@ export class BlueByrdStateManager {
           baseUrl: 'https://dev.api.example.com',
           apiKey: 'dev-key',
           variables: {
-            baseUrl: 'https://dev.api.example.com',
             userId: '100',
           },
           inheritsFrom: 'Local',
@@ -81,9 +86,7 @@ export class BlueByrdStateManager {
           id: 'env-prod',
           baseUrl: 'https://api.example.com',
           apiKey: 'prod-key',
-          variables: {
-            baseUrl: 'https://api.example.com',
-          },
+          variables: {},
           profileId: 'profile-prod',
         },
       },
@@ -196,11 +199,20 @@ export class BlueByrdStateManager {
       ? value.profiles.map((p, index) => ({
           id: p.id || `profile-${slugify(p.name || `dev-${index + 1}`)}`,
           name: p.name || `Profile ${index + 1}`,
+          color: p.color || (index === 0 ? '#10b981' : index === 1 ? '#f59e0b' : index === 2 ? '#ef4444' : '#3b82f6'),
           auth: this.normalizeAuth(p.auth),
           variables: p.variables || {},
           headers: p.headers || {},
           inheritsFrom: p.inheritsFrom,
           notes: p.notes || '',
+          guards: p.guards ? {
+            enabled: p.guards.enabled !== false,
+            warnBeforeSend: !!p.guards.warnBeforeSend,
+            warnMessage: p.guards.warnMessage || '',
+            blockedMethods: Array.isArray(p.guards.blockedMethods) ? p.guards.blockedMethods : [],
+            requireKeywordConfirmation: !!p.guards.requireKeywordConfirmation,
+            confirmationKeyword: p.guards.confirmationKeyword || '',
+          } : undefined,
         }))
       : fallback.profiles;
 
@@ -214,6 +226,7 @@ export class BlueByrdStateManager {
         environments[key] = {
           id: env.id || `env-${slugify(key)}`,
           baseUrl: env.baseUrl !== undefined ? env.baseUrl : (env.inheritsFrom ? '' : 'https://api.example.com'),
+          baseUrlDisabled: env.baseUrlDisabled ? true : false,
           apiKey: env.apiKey || '',
           auth: env.auth ? this.normalizeAuth(env.auth) : undefined,
           variables: env.variables || {},
@@ -256,6 +269,7 @@ export class BlueByrdStateManager {
                       auth: r.auth,
                       notes: r.notes || '',
                       variables: r.variables || [],
+                      baseUrlPreference: r.baseUrlPreference,
                     }))
                   : [];
                 return {
@@ -267,6 +281,10 @@ export class BlueByrdStateManager {
                   variables: f.variables || {},
                   headers: f.headers || {},
                   inheritsFrom: f.inheritsFrom,
+                  baseUrl: f.baseUrl,
+                  baseUrlDisabled: f.baseUrlDisabled ? true : false,
+                  baseUrlPreference: f.baseUrlPreference,
+                  preferCollectionBaseUrl: f.preferCollectionBaseUrl,
                 };
               })
             : [];
@@ -296,6 +314,7 @@ export class BlueByrdStateManager {
                   auth: r.auth,
                   notes: r.notes || '',
                   variables: r.variables || [],
+                  baseUrlPreference: r.baseUrlPreference,
                 }))
             : [];
 
@@ -310,6 +329,10 @@ export class BlueByrdStateManager {
             headers: col.headers || {},
             inheritsFrom: col.inheritsFrom,
             profileId: col.profileId,
+            baseUrl: col.baseUrl,
+            baseUrlDisabled: col.baseUrlDisabled ? true : false,
+            baseUrlPreference: col.baseUrlPreference,
+            preferCollectionBaseUrl: col.preferCollectionBaseUrl,
           };
         })
       : fallback.collections;
@@ -329,7 +352,23 @@ export class BlueByrdStateManager {
       : [];
 
     const activeProfileId = typeof value.activeProfileId === 'string' ? value.activeProfileId : undefined;
-    const activeEnvironmentName = typeof value.activeEnvironmentName === 'string' ? value.activeEnvironmentName : (fallback.activeEnvironmentName || undefined);
+    let activeEnvironmentName: string | undefined;
+    if (value && 'activeEnvironmentName' in value) {
+      const candidate = typeof value.activeEnvironmentName === 'string' && value.activeEnvironmentName.trim()
+        ? value.activeEnvironmentName.trim()
+        : undefined;
+      if (candidate) {
+        const envExists = environments[candidate] || Object.values(environments).some((e) => e.id === candidate);
+        activeEnvironmentName = envExists ? candidate : undefined;
+      } else {
+        activeEnvironmentName = undefined;
+      }
+    } else {
+      activeEnvironmentName = fallback.activeEnvironmentName && environments[fallback.activeEnvironmentName]
+        ? fallback.activeEnvironmentName
+        : Object.keys(environments)[0] || undefined;
+    }
+    const settings = value.settings || fallback.settings;
 
     return {
       profiles,
@@ -338,6 +377,7 @@ export class BlueByrdStateManager {
       history,
       activeProfileId,
       activeEnvironmentName,
+      settings,
     };
   }
 
@@ -346,7 +386,30 @@ export class BlueByrdStateManager {
       this.context.workspaceState.get<Partial<AppState>>(this.storageKey) ||
       this.context.workspaceState.get<Partial<AppState>>(this.legacyStorageKey);
     try {
-      const normalized = this.normalizeState(saved);
+      let normalized = this.normalizeState(saved);
+      // Auto-recover collections if state has only default template collection and a recovered backup exists in workspace
+      if (!saved || !saved.collections || saved.collections.length <= 1) {
+        const workspaceFolders = vscode?.workspace?.workspaceFolders;
+        if (workspaceFolders && workspaceFolders.length > 0) {
+          for (const wf of workspaceFolders) {
+            const backupFile = path.join(wf.uri.fsPath, 'byrdsnest-backup-recovered.json');
+            if (fs.existsSync(backupFile)) {
+              try {
+                const raw = fs.readFileSync(backupFile, 'utf8');
+                const parsed = JSON.parse(raw);
+                if (parsed && Array.isArray(parsed.collections) && parsed.collections.length > 1) {
+                  console.log('[byrdsnest api client] Auto-restoring recovered collections from backup file:', backupFile);
+                  normalized = this.normalizeState(parsed);
+                  this.save(normalized);
+                  break;
+                }
+              } catch (e) {
+                // Ignore parse errors
+              }
+            }
+          }
+        }
+      }
       return normalized;
     } catch (err) {
       console.error('[byrdsnest api client] Error normalizing state, returning fallback:', err);
@@ -358,6 +421,11 @@ export class BlueByrdStateManager {
 
   public save(state: AppState): void {
     this.context.workspaceState.update(this.storageKey, state);
+    try {
+      this._onDidChangeState.fire(state);
+    } catch (err) {
+      console.error('[byrdsnest api client] Error firing onDidChangeState:', err);
+    }
   }
 
   // --- Active Context & Workspace Scope ---
@@ -392,7 +460,7 @@ export class BlueByrdStateManager {
     return profiles.find((p) => p.id === nameOrId) || profiles.find((p) => p.name === nameOrId);
   }
 
-  public createProfile(name: string, auth?: Partial<ProfileAuth>): Profile {
+  public createProfile(name: string, auth?: Partial<ProfileAuth>, color?: string): Profile {
     const state = this.getState();
     const trimmed = name.trim() || 'New Profile';
     let finalName = trimmed;
@@ -405,6 +473,7 @@ export class BlueByrdStateManager {
     const newProfile: Profile = {
       id: this.generateId(`profile-${slug}`),
       name: finalName,
+      color: color || '#3b82f6',
       auth: this.normalizeAuth(auth),
       variables: {},
       headers: {},
@@ -472,7 +541,7 @@ export class BlueByrdStateManager {
     return entry ? entry[0] : undefined;
   }
 
-  public createEnvironment(name: string, baseUrl = 'https://api.example.com', profileId?: string): { name: string; env: EnvironmentConfig } {
+  public createEnvironment(name: string, baseUrl?: string, profileId?: string, baseUrlDisabled?: boolean): { name: string; env: EnvironmentConfig } {
     const state = this.getState();
     const trimmed = name.trim() || 'New Environment';
     let finalName = trimmed;
@@ -484,7 +553,8 @@ export class BlueByrdStateManager {
     const slug = finalName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'env';
     const newEnv: EnvironmentConfig = {
       id: this.generateId(`env-${slug}`),
-      baseUrl,
+      baseUrl: baseUrl !== undefined ? baseUrl : 'https://api.example.com',
+      baseUrlDisabled: baseUrlDisabled !== undefined ? baseUrlDisabled : (baseUrl !== undefined ? false : true),
       variables: {},
       headers: {},
       notes: '',
@@ -572,6 +642,7 @@ export class BlueByrdStateManager {
     const newCol: Collection = {
       id: this.generateId('col'),
       name: name.trim() || 'New Collection',
+      baseUrlDisabled: true,
       folders: [],
       requests: [],
       profileId,
@@ -611,6 +682,7 @@ export class BlueByrdStateManager {
     const newFolder: CollectionFolder = {
       id: this.generateId('folder'),
       name: folderName.trim() || 'New Folder',
+      baseUrlDisabled: true,
       requests: [],
       headers: {},
       variables: {},

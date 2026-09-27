@@ -1,8 +1,9 @@
 import * as vscode from 'vscode';
-import { Collection, CollectionFolder, EnvironmentConfig, Profile, ProfileAuth, StoredToken } from '../../types';
+import { Collection, CollectionFolder, EnvironmentConfig, Profile, ProfileAuth, ProfileGuardConfig, StoredToken } from '../../types';
 import { BlueByrdStateManager } from '../../state/stateManager';
 import { TokenService } from '../../services/tokenService';
 import { getSettingsPanelHtml } from './settingsPanelHtml';
+import { BlueByrdPanel } from './requestPanel';
 
 export class BlueByrdSettingsPanel {
   public static readonly viewType = 'blueByrdSettings';
@@ -101,6 +102,8 @@ export class BlueByrdSettingsPanel {
     const allEnvironments = Object.entries(this.stateManager.getEnvironments()).map(([name, env]) => ({
       id: env.id,
       name,
+      baseUrl: env.baseUrl,
+      inheritsFrom: env.inheritsFrom,
     }));
     const allProfiles = this.stateManager.getProfiles().map((p) => ({
       id: p.id,
@@ -205,7 +208,10 @@ export class BlueByrdSettingsPanel {
 
   private handleSave(payload: {
     name: string;
+    color?: string;
     baseUrl?: string;
+    baseUrlDisabled?: boolean;
+    baseUrlPreference?: 'collection' | 'environment';
     inheritsFrom?: string;
     profileId?: string;
     authType: 'none' | 'bearer' | 'apiKey' | 'oauth2' | 'basic';
@@ -227,6 +233,7 @@ export class BlueByrdSettingsPanel {
     variables: Record<string, string>;
     headers?: Record<string, string>;
     notes?: string;
+    guards?: ProfileGuardConfig;
   }): void {
     const nextName = payload.name.trim() || this.originalName;
 
@@ -253,22 +260,26 @@ export class BlueByrdSettingsPanel {
       const updated: Profile = {
         id: this.originalId || existing?.id || `profile-${Date.now()}`,
         name: nextName,
+        color: payload.color || existing?.color || '#3b82f6',
         auth: authObj,
         variables: payload.variables,
         headers: payload.headers,
         inheritsFrom: payload.inheritsFrom,
         notes: payload.notes,
+        guards: payload.guards || existing?.guards,
       };
       this.stateManager.saveProfile(updated);
     } else if (this.target === 'environment') {
       const existing = this.stateManager.getEnvironment(this.originalId || this.originalName);
+      const inheritsFrom = payload.inheritsFrom !== undefined ? (payload.inheritsFrom.trim() || undefined) : existing?.inheritsFrom;
       const updated: EnvironmentConfig = {
         id: this.originalId || existing?.id || `env-${Date.now()}`,
-        baseUrl: payload.baseUrl || 'https://api.example.com',
+        baseUrl: inheritsFrom && !payload.baseUrl ? '' : (payload.baseUrl || (inheritsFrom ? '' : 'https://api.example.com')),
+        baseUrlDisabled: !!payload.baseUrlDisabled,
         auth: authObj,
         variables: payload.variables,
         headers: payload.headers,
-        inheritsFrom: payload.inheritsFrom,
+        inheritsFrom,
         notes: payload.notes,
         profileId: payload.profileId || undefined,
       };
@@ -277,11 +288,22 @@ export class BlueByrdSettingsPanel {
       const existing = this.stateManager.getCollection(this.originalId || this.originalName);
       if (existing) {
         existing.name = nextName;
-        existing.variables = payload.variables;
+        existing.variables = payload.variables || {};
         existing.headers = payload.headers;
         existing.inheritsFrom = payload.inheritsFrom;
         existing.notes = payload.notes;
         existing.profileId = payload.profileId || undefined;
+        existing.baseUrlDisabled = !!payload.baseUrlDisabled;
+        if (payload.baseUrl !== undefined) {
+          existing.baseUrl = payload.baseUrl.trim();
+          if (existing.baseUrl) {
+            existing.variables['baseUrl'] = existing.baseUrl;
+          }
+        }
+        if (payload.baseUrlPreference) {
+          existing.baseUrlPreference = payload.baseUrlPreference;
+          existing.preferCollectionBaseUrl = payload.baseUrlPreference === 'collection';
+        }
         existing.auth = {
           inheritFromProfile: payload.inheritAuth !== false,
           inheritFromEnvironment: payload.inheritAuth !== false,
@@ -298,6 +320,7 @@ export class BlueByrdSettingsPanel {
         existing.headers = payload.headers;
         existing.inheritsFrom = payload.inheritsFrom;
         existing.notes = payload.notes;
+        existing.baseUrlDisabled = !!payload.baseUrlDisabled;
         existing.auth = {
           inheritFromProfile: payload.inheritAuth !== false,
           inheritFromEnvironment: payload.inheritAuth !== false,
@@ -311,6 +334,7 @@ export class BlueByrdSettingsPanel {
 
     vscode.window.showInformationMessage(`${this.target.toUpperCase()} settings saved.`);
     vscode.commands.executeCommand('byrdsnestApiClient.refreshExplorer');
+    BlueByrdPanel.broadcastStateUpdated();
     try {
       this.panel.title = `${nextName} Settings`;
     } catch {

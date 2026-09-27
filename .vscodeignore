@@ -10,3 +10,4 @@ scratch/**
 .gemini/**
 test/**
 *.log
+byrdsnest-backup*.json

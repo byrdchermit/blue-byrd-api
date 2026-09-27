@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3.1] - 2026-09-27
+
+### Added
+- **Configurable Safety Guards & Touch Points for Profiles**:
+  - `ProfileGuardConfig` with method-level protection (e.g. `DELETE`, `PUT`, `PATCH`), keyword confirmation prompts (e.g. typing "PROD"), pre-send confirmation modals, and customizable warning messages.
+  - Live `#profile-guard-badge` status indicator in the Request Panel header reflecting active profile protections.
+  - Dedicated and Global Settings UI for configuring profile safety guards.
+- **Full-Height Live Body Editor**:
+  - Syntax-highlighted request body editor (tokenized colors, line numbers gutter, tab indentation, and format beautify).
+  - Expanded editor to span full remaining height down to the bottom of the page.
+  - Live bidirectional synchronization with VS Code Monaco editor via `↗ Open in Editor`.
+
+### Fixed
+- **Variable Resolution Truth & URL Preview Parity**:
+  - Fixed inheritance override determination in `VariableService` so disabled upper-tier entries (e.g. `baseUrlDisabled`) or preferred collection base URLs do not suppress active winning entries.
+  - Synchronized backend-resolved variables directly into the webview to ensure the live URL preview bar and preview tab are always in complete agreement.
+- **Activity Bar Icon Rendering**:
+  - Converted Activity Bar SVG icon to an optimal 24x24 vector glyph with transparent background conforming to VS Code's `-webkit-mask` rendering specifications.
+- **Active Environment Persistence & Scoped Selection**:
+  - Profile-scoped environment dropdown with automatic persistence on selection changes.
+
+---
+
 ## [0.3.0] - 2026-09-25
 
 ### Added

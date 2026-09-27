@@ -61,7 +61,8 @@ export class HttpService {
       params.environment,
       params.collection,
       params.folder,
-      params.variables
+      params.variables,
+      (params as any).baseUrlPreference
     );
 
     // 1.5. Pre-Request Script execution
@@ -103,7 +104,8 @@ export class HttpService {
           params.environment,
           params.collection,
           params.folder,
-          params.variables
+          params.variables,
+          (params as any).baseUrlPreference
         );
       }
 
@@ -121,12 +123,13 @@ export class HttpService {
       }
     }
 
-    // 2. Resolve hierarchical headers (Parent Env -> Env -> Col -> Folder -> Request)
+    // 2. Resolve hierarchical headers (Profile -> Col -> Folder -> Parent Env -> Env -> Request)
     const hierarchicalHeaders = this.variableService.resolveHeaders(
       params.environment,
       params.collection,
       params.folder,
-      incomingHeaders
+      incomingHeaders,
+      params.profileId || params.profile
     );
 
     // 3. Resolve Auth headers

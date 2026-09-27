@@ -55,6 +55,7 @@ export type RequestContext = {
   variables?: VariableItem[];
   preRequestScript?: string;
   postResponseScript?: string;
+  baseUrlPreference?: 'collection' | 'environment' | 'none';
 };
 
 export type BodyType = 'none' | 'json' | 'form-urlencoded' | 'form-data' | 'text' | 'xml' | 'raw';
@@ -119,6 +120,7 @@ export type RequestItem = {
   variables?: VariableItem[];
   preRequestScript?: string;
   postResponseScript?: string;
+  baseUrlPreference?: 'collection' | 'environment' | 'none';
 };
 
 export type TestResultItem = {
@@ -142,6 +144,10 @@ export type CollectionFolder = {
   variables?: Record<string, string>;
   headers?: Record<string, string>;
   inheritsFrom?: string;
+  baseUrl?: string;
+  baseUrlDisabled?: boolean;
+  baseUrlPreference?: 'collection' | 'environment';
+  preferCollectionBaseUrl?: boolean;
 };
 
 export type Collection = {
@@ -155,6 +161,10 @@ export type Collection = {
   headers?: Record<string, string>;
   inheritsFrom?: string;
   profileId?: string;
+  baseUrl?: string;
+  baseUrlDisabled?: boolean;
+  baseUrlPreference?: 'collection' | 'environment';
+  preferCollectionBaseUrl?: boolean;
 };
 
 export type ResponseMetadata = {
@@ -183,19 +193,46 @@ export type RecentRequest = RequestItem & {
   consoleLogs?: ScriptConsoleLog[];
 };
 
+export interface ProfileGuardConfig {
+  enabled?: boolean;
+  warnBeforeSend?: boolean;
+  warnMessage?: string;
+  blockedMethods?: string[];
+  requireKeywordConfirmation?: boolean;
+  confirmationKeyword?: string;
+}
+
 export type Profile = {
   id: string;
   name: string;
+  color?: string;
   auth: ProfileAuth;
   variables?: Record<string, string>;
   headers?: Record<string, string>;
   inheritsFrom?: string;
   notes?: string;
+  guards?: ProfileGuardConfig;
 };
+
+export interface ProfileColorPalette {
+  name: string;
+  value: string;
+}
+
+export const DEFAULT_PROFILE_COLORS: ProfileColorPalette[] = [
+  { name: 'Dev Green', value: '#10b981' },
+  { name: 'Staging Amber', value: '#f59e0b' },
+  { name: 'Prod Red', value: '#ef4444' },
+  { name: 'Ocean Blue', value: '#3b82f6' },
+  { name: 'Royal Purple', value: '#8b5cf6' },
+  { name: 'Cyber Cyan', value: '#06b6d4' },
+  { name: 'Slate Gray', value: '#64748b' },
+];
 
 export type EnvironmentConfig = {
   id: string;
   baseUrl: string;
+  baseUrlDisabled?: boolean;
   apiKey?: string;
   auth?: ProfileAuth;
   variables?: Record<string, string>;
@@ -205,6 +242,13 @@ export type EnvironmentConfig = {
   profileId?: string;
 };
 
+export interface AppSettings {
+  baseUrlPreference?: 'collection' | 'environment' | 'auto' | 'none';
+  requestTimeoutMs?: number;
+  followRedirects?: boolean;
+  rejectUnauthorized?: boolean;
+}
+
 export type AppState = {
   profiles: Profile[];
   environments: Record<string, EnvironmentConfig>;
@@ -212,6 +256,7 @@ export type AppState = {
   history: RecentRequest[];
   activeProfileId?: string;
   activeEnvironmentName?: string;
+  settings?: AppSettings;
 };
 
 export type VariableSourceKind =

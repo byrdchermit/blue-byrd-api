@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { AppState, EnvironmentConfig } from '../../types';
 import { BlueByrdStateManager } from '../../state/stateManager';
-import { BlueByrdTreeItem } from './treeItem';
+import { BlueByrdTreeItem, getProfileIcon } from './treeItem';
 
 export class BlueByrdEnvironmentsTreeProvider
   implements vscode.TreeDataProvider<BlueByrdTreeItem>, vscode.Disposable {
@@ -40,6 +40,31 @@ export class BlueByrdEnvironmentsTreeProvider
     const isFiltered = activeProfileId && activeProfileId !== 'all';
     const activeEnvName = this.state.activeEnvironmentName;
 
+    // Profile switcher banner at top of Environments tree
+    const activeProfile = isFiltered
+      ? this.stateManager.getProfile(activeProfileId)
+      : (this.state.profiles && this.state.profiles[0]);
+    const profileName = activeProfile ? activeProfile.name : (activeProfileId === 'all' ? 'All Profiles' : 'Global');
+    const profileColor = activeProfile?.color;
+
+    const bannerItem = new BlueByrdTreeItem(
+      `Profile: ${profileName}`,
+      'active-filter',
+      'active-profile-banner',
+      undefined,
+      undefined,
+      [],
+      {
+        title: 'Switch Active Profile',
+        command: 'byrdsnestApiClient.switchActiveProfile',
+      },
+      '(click to switch)',
+      vscode.TreeItemCollapsibleState.None
+    );
+    bannerItem.id = 'env-active-profile-banner';
+    bannerItem.iconPath = getProfileIcon(profileColor, true);
+    bannerItem.tooltip = `Active Profile: ${profileName}\nClick to switch active profile.`;
+
     // 1. Filter environments matching active profile scope or global
     const envEntries = Object.entries(this.state.environments).filter(([name, env]) => {
       if (!isFiltered) return true;
@@ -60,7 +85,7 @@ export class BlueByrdEnvironmentsTreeProvider
         vscode.TreeItemCollapsibleState.None
       );
       emptyItem.iconPath = new vscode.ThemeIcon('info');
-      return [emptyItem];
+      return [bannerItem, emptyItem];
     }
 
     // 2. Maps for lookup
@@ -105,6 +130,7 @@ export class BlueByrdEnvironmentsTreeProvider
 
       const isActive = activeEnvName === name || (env.id && activeEnvName === env.id);
       const isParent = childNodes.length > 0;
+      const isChild = !!env.inheritsFrom;
 
       const descParts: string[] = [];
       if (isActive) {
@@ -112,13 +138,22 @@ export class BlueByrdEnvironmentsTreeProvider
       }
       if (isParent) {
         descParts.push(`Parent (${childNodes.length})`);
-      }
-      if (env.inheritsFrom) {
-        const p = envById.get(env.inheritsFrom) || envByName.get(env.inheritsFrom);
+      } else if (isChild) {
+        const p = envById.get(env.inheritsFrom!) || envByName.get(env.inheritsFrom!);
         descParts.push(`inherits: ${p?.name || env.inheritsFrom}`);
+      } else {
+        descParts.push('Root');
       }
-      if (env.baseUrl && !isParent) {
-        descParts.push(env.baseUrl);
+
+      if (!isParent) {
+        if (!env.baseUrlDisabled && env.baseUrl) {
+          descParts.push(env.baseUrl);
+        } else if (!env.baseUrlDisabled && env.inheritsFrom) {
+          const p = envById.get(env.inheritsFrom) || envByName.get(env.inheritsFrom);
+          if (p && !p.env.baseUrlDisabled && p.env.baseUrl) {
+            descParts.push(`↳ ${p.env.baseUrl}`);
+          }
+        }
       }
       const desc = descParts.length > 0 ? descParts.join(' • ') : undefined;
 
@@ -138,17 +173,23 @@ export class BlueByrdEnvironmentsTreeProvider
         isParent ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None
       );
 
-      if (isActive) {
-        item.iconPath = new vscode.ThemeIcon('check', new vscode.ThemeColor('charts.green'));
-      } else if (isParent) {
-        item.iconPath = new vscode.ThemeIcon('server-process');
+      if (isParent) {
+        item.iconPath = isActive
+          ? new vscode.ThemeIcon('server-process', new vscode.ThemeColor('charts.green'))
+          : new vscode.ThemeIcon('server-process');
+      } else if (isChild) {
+        item.iconPath = isActive
+          ? new vscode.ThemeIcon('arrow-subwards', new vscode.ThemeColor('charts.green'))
+          : new vscode.ThemeIcon('arrow-subwards');
       } else {
-        item.iconPath = new vscode.ThemeIcon('globe');
+        item.iconPath = isActive
+          ? new vscode.ThemeIcon('server-environment', new vscode.ThemeColor('charts.green'))
+          : new vscode.ThemeIcon('server-environment');
       }
 
       return item;
     };
 
-    return rootEntries.map(e => buildEnvNode(e.name, e.env, new Set()));
+    return [bannerItem, ...rootEntries.map(e => buildEnvNode(e.name, e.env, new Set()))];
   }
 }

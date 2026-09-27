@@ -38,6 +38,8 @@ export function activate(context: vscode.ExtensionContext): void {
       100
     );
 
+    let collectionsView: vscode.TreeView<any> | undefined;
+
     const updateStatusBar = () => {
       const state = stateManager.getState();
       const activeProfile =
@@ -48,9 +50,14 @@ export function activate(context: vscode.ExtensionContext): void {
       const envLabel =
         state.activeEnvironmentName || Object.keys(state.environments)[0] || 'None';
 
-      statusBarItem.text = `$(account) ${profileLabel} $(globe) ${envLabel}`;
-      statusBarItem.tooltip = `Active Profile Scope: ${profileLabel}\nActive Environment: ${envLabel}\nClick to switch profile or environment context`;
+      statusBarItem.text = `$(circle-filled) ${profileLabel} $(globe) ${envLabel}`;
+      statusBarItem.color = activeProfile?.color || undefined;
+      statusBarItem.tooltip = `Active Profile Scope: ${profileLabel}${activeProfile?.color ? ` (${activeProfile.color})` : ''}\nActive Environment: ${envLabel}\nClick to switch profile or environment context`;
       statusBarItem.command = 'byrdsnestApiClient.switchContext';
+
+      if (collectionsView) {
+        collectionsView.description = profileLabel;
+      }
     };
 
     updateStatusBar();
@@ -66,16 +73,14 @@ export function activate(context: vscode.ExtensionContext): void {
       updateStatusBar
     );
 
-    // Register all 4 native view accordions
-    const profilesView = vscode.window.createTreeView('byrdsnestProfiles', {
-      treeDataProvider: profilesProvider,
-    });
-    const collectionsView = vscode.window.createTreeView('byrdsnestCollections', {
+    // Register native view accordions (Collections, Environments, Tools)
+    collectionsView = vscode.window.createTreeView('byrdsnestCollections', {
       treeDataProvider: collectionsProvider,
       dragAndDropController: collectionsProvider,
       canSelectMany: true,
       showCollapseAll: true,
     });
+    updateStatusBar();
     const environmentsView = vscode.window.createTreeView('byrdsnestEnvironments', {
       treeDataProvider: environmentsProvider,
       showCollapseAll: true,
@@ -86,7 +91,6 @@ export function activate(context: vscode.ExtensionContext): void {
 
     context.subscriptions.push(
       treeCoordinator,
-      profilesView,
       collectionsView,
       environmentsView,
       toolsView

@@ -16,22 +16,32 @@ export function getRequestPanelHtml(
   state: AppState,
   initialInheritedVars: InheritedVariableInfo[] = [],
   initialInheritedHeaders: InheritedHeaderInfo[] = [],
-  availableTokens: StoredToken[] = []
+  availableTokens: StoredToken[] = [],
+  initialResolvedVars: Record<string, string> = {}
 ): string {
   const activeProfile = context.profileId || context.profile || (state.activeProfileId !== 'all' ? state.activeProfileId : undefined) || state.profiles[0]?.id;
+  const activeProfileObj = state.profiles.find((p) => p.id === activeProfile || p.name === activeProfile) || state.profiles[0];
+  const activeProfileColor = activeProfileObj?.color || '#3b82f6';
   const profileOptions = state.profiles
     .map((p) => {
       const isDuplicate = state.profiles.filter((o) => o.name === p.name).length > 1;
       const label = isDuplicate ? `${p.name} (${p.id.replace(/^profile-/, '')})` : p.name;
       const isSelected = p.id === activeProfile || p.name === activeProfile;
-      return `<option value="${escapeHtml(p.name)}" data-id="${escapeHtml(p.id)}" ${isSelected ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+      const guardsJson = p.guards ? escapeHtml(JSON.stringify(p.guards)) : '';
+      return `<option value="${escapeHtml(p.name)}" data-id="${escapeHtml(p.id)}" data-color="${escapeHtml(p.color || '#3b82f6')}" data-guards="${guardsJson}" ${isSelected ? 'selected' : ''}>${escapeHtml(label)}</option>`;
     })
     .join('');
 
-  const envEntries = Object.entries(state.environments);
-  const envKeys = Object.keys(state.environments);
-  const activeEnv = context.environment || state.activeEnvironmentName || envKeys[0];
-  const selectedEnvKey = envKeys.find(k => k === activeEnv || state.environments[k]?.id === activeEnv) || envKeys[0];
+  const activeProfileId = state.activeProfileId;
+  const isFiltered = activeProfileId && activeProfileId !== 'all';
+  const envEntries = Object.entries(state.environments).filter(([name, env]) => {
+    if (!isFiltered) return true;
+    if (activeProfileId === 'global') return !env.profileId || env.profileId === 'global';
+    return env.profileId === activeProfileId || !env.profileId || env.profileId === 'global';
+  });
+  const envKeys = envEntries.map(([name]) => name);
+  const activeEnv = context.environment !== undefined ? context.environment : (state.activeEnvironmentName || '');
+  const selectedEnvKey = activeEnv ? (envKeys.find(k => k === activeEnv || state.environments[k]?.id === activeEnv) || '') : '';
 
   // Lookup maps for inheritance resolution
   const envById = new Map<string, { name: string; env: EnvironmentConfig }>();
@@ -41,82 +51,121 @@ export function getRequestPanelHtml(
     if (env.id) envById.set(env.id, { name, env });
   }
 
-  // Build parent-to-children mapping & root entries
-  const childrenMap = new Map<string, Array<{ name: string; env: EnvironmentConfig }>>();
-  const rootEntries: Array<{ name: string; env: EnvironmentConfig }> = [];
-
-  for (const [name, env] of envEntries) {
-    const parentRef = env.inheritsFrom;
-    const parentEntry = parentRef ? (envById.get(parentRef) || envByName.get(parentRef)) : undefined;
-
-    if (parentEntry && parentEntry.name !== name) {
-      const key = parentEntry.env.id || parentEntry.name;
-      if (!childrenMap.has(key)) {
-        childrenMap.set(key, []);
-      }
-      childrenMap.get(key)!.push({ name, env });
+  // Split into profile-specific and shared if active profile is set
+  const hasSplit = isFiltered && activeProfileId !== 'global';
+  const profileEnvs: Array<[string, EnvironmentConfig]> = [];
+  const sharedEnvs: Array<[string, EnvironmentConfig]> = [];
+  envEntries.forEach(([name, env]) => {
+    if (hasSplit && env.profileId === activeProfileId) {
+      profileEnvs.push([name, env]);
     } else {
-      rootEntries.push({ name, env });
+      sharedEnvs.push([name, env]);
     }
-  }
+  });
 
-  const renderedEnvNames = new Set<string>();
-  const optionLines: string[] = [];
+  const renderGroupTree = (entries: Array<[string, EnvironmentConfig]>): string[] => {
+    const childrenMap = new Map<string, Array<{ name: string; env: EnvironmentConfig }>>();
+    const rootEntries: Array<{ name: string; env: EnvironmentConfig }> = [];
 
-  const renderEnvOption = (name: string, env: EnvironmentConfig, depth: number, visited: Set<string>) => {
-    const key = env.id || name;
-    if (visited.has(key)) return;
-    const nextVisited = new Set(visited).add(key);
-    renderedEnvNames.add(name);
+    for (const [name, env] of entries) {
+      const parentRef = env.inheritsFrom;
+      const parentEntry = parentRef ? (envById.get(parentRef) || envByName.get(parentRef)) : undefined;
 
-    const rawChildren = childrenMap.get(key) || [];
-    const validChildren = rawChildren.filter(c => !visited.has(c.env.id || c.name));
-    const hasChildren = validChildren.length > 0;
-
-    const parentEntry = env.inheritsFrom ? (envById.get(env.inheritsFrom) || envByName.get(env.inheritsFrom)) : undefined;
-    const parentDisplayName = parentEntry ? parentEntry.name : env.inheritsFrom;
-
-    let label = '';
-    if (depth > 0) {
-      const indent = '\u00A0\u00A0'.repeat(depth) + '↳ ';
-      label = `${indent}${name}`;
-      if (parentDisplayName) {
-        label += ` (inherits: ${parentDisplayName})`;
-      }
-      if (hasChildren) {
-        label += ` [Parent (${validChildren.length})]`;
-      }
-    } else {
-      label = name;
-      if (hasChildren) {
-        label += ` (Parent • ${validChildren.length} ${validChildren.length === 1 ? 'child' : 'children'})`;
-      } else if (parentDisplayName) {
-        label += ` (inherits: ${parentDisplayName})`;
+      if (parentEntry && parentEntry.name !== name && entries.some(([eName]) => eName === parentEntry.name)) {
+        const key = parentEntry.env.id || parentEntry.name;
+        if (!childrenMap.has(key)) {
+          childrenMap.set(key, []);
+        }
+        childrenMap.get(key)!.push({ name, env });
+      } else {
+        rootEntries.push({ name, env });
       }
     }
 
-    const isSelected = name === selectedEnvKey;
-    optionLines.push(
-      `<option value="${escapeHtml(name)}" ${isSelected ? 'selected' : ''}>${escapeHtml(label)}</option>`
-    );
+    const renderedEnvNames = new Set<string>();
+    const lines: string[] = [];
 
-    for (const child of validChildren) {
-      renderEnvOption(child.name, child.env, depth + 1, nextVisited);
+    const renderEnvOption = (name: string, env: EnvironmentConfig, depth: number, visited: Set<string>) => {
+      const key = env.id || name;
+      if (visited.has(key)) return;
+      const nextVisited = new Set(visited).add(key);
+      renderedEnvNames.add(name);
+
+      const rawChildren = childrenMap.get(key) || [];
+      const validChildren = rawChildren.filter(c => !visited.has(c.env.id || c.name));
+      const hasChildren = validChildren.length > 0;
+
+      const parentEntry = env.inheritsFrom ? (envById.get(env.inheritsFrom) || envByName.get(env.inheritsFrom)) : undefined;
+      const parentDisplayName = parentEntry ? parentEntry.name : env.inheritsFrom;
+
+      let label = '';
+      if (depth > 0) {
+        const indent = '\u00A0\u00A0'.repeat(depth) + '↳ ';
+        label = `${indent}${name}`;
+        if (parentDisplayName) {
+          label += ` (inherits: ${parentDisplayName})`;
+        }
+        if (hasChildren) {
+          label += ` [Parent (${validChildren.length})]`;
+        }
+      } else {
+        label = name;
+        if (hasChildren) {
+          label += ` (Parent • ${validChildren.length} ${validChildren.length === 1 ? 'child' : 'children'})`;
+        } else if (parentDisplayName) {
+          label += ` (inherits: ${parentDisplayName})`;
+        }
+      }
+
+      const isSelected = Boolean(selectedEnvKey) && name === selectedEnvKey;
+      lines.push(
+        `<option value="${escapeHtml(name)}" ${isSelected ? 'selected' : ''}>${escapeHtml(label)}</option>`
+      );
+
+      for (const child of validChildren) {
+        renderEnvOption(child.name, child.env, depth + 1, nextVisited);
+      }
+    };
+
+    for (const root of rootEntries) {
+      renderEnvOption(root.name, root.env, 0, new Set());
     }
+
+    for (const [name, env] of entries) {
+      if (!renderedEnvNames.has(name)) {
+        renderEnvOption(name, env, 0, new Set());
+      }
+    }
+
+    return lines;
   };
 
-  for (const root of rootEntries) {
-    renderEnvOption(root.name, root.env, 0, new Set());
-  }
+  const optionLines: string[] = [];
+  optionLines.push(
+    `<option value="" ${!selectedEnvKey ? 'selected' : ''}>No Environment (Collection Defaults)</option>`
+  );
 
-  // Safety fallback for any environments not reachable from roots
-  for (const [name, env] of envEntries) {
-    if (!renderedEnvNames.has(name)) {
-      renderEnvOption(name, env, 0, new Set());
-    }
+  if (hasSplit && profileEnvs.length > 0 && sharedEnvs.length > 0) {
+    optionLines.push(`<optgroup label="Profile Environments (${escapeHtml(activeProfileObj ? activeProfileObj.name : 'Profile')})">`);
+    optionLines.push(...renderGroupTree(profileEnvs));
+    optionLines.push(`</optgroup>`);
+    optionLines.push(`<optgroup label="Shared / Global Environments">`);
+    optionLines.push(...renderGroupTree(sharedEnvs));
+    optionLines.push(`</optgroup>`);
+  } else {
+    optionLines.push(...renderGroupTree(envEntries));
   }
 
   const environmentOptions = optionLines.join('');
+
+  const environmentsData = Object.entries(state.environments).map(([name, env]) => ({
+    id: env.id,
+    name,
+    inheritsFrom: env.inheritsFrom,
+    profileId: env.profileId,
+    baseUrl: env.baseUrl,
+    baseUrlDisabled: env.baseUrlDisabled,
+  }));
 
   const collectionName = escapeHtml(context.collection || state.collections[0]?.name || 'Demo Collection');
   const displayFolder = escapeHtml(context.folder && context.folder !== 'Root' ? context.folder : 'Root');
@@ -138,7 +187,8 @@ export function getRequestPanelHtml(
       --border: var(--vscode-panel-border, var(--vscode-input-border, #3c3c3c));
       --text: var(--vscode-editor-foreground, #cccccc);
       --muted: var(--vscode-descriptionForeground, #8c8c8c);
-      --primary: var(--vscode-button-background, #0e639c);
+      --profile-accent: ${activeProfileColor || 'var(--vscode-button-background, #0e639c)'};
+      --primary: var(--profile-accent);
       --primary-fg: var(--vscode-button-foreground, #ffffff);
       --success: var(--vscode-testing-iconPassed, #4ec9b0);
       --danger: var(--vscode-testing-iconFailed, #f14c4c);
@@ -150,18 +200,25 @@ export function getRequestPanelHtml(
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body {
       min-height: 100%;
+      height: 100%;
       background: var(--bg);
       color: var(--text);
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       font-size: 13px;
     }
-    body { padding: 14px; }
+    body {
+      padding: 14px;
+      box-sizing: border-box;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
 
     .app {
       display: flex;
       flex-direction: column;
       gap: 12px;
       min-height: calc(100vh - 28px);
+      height: calc(100vh - 28px);
     }
 
     /* Top Context Bar */
@@ -302,18 +359,52 @@ export function getRequestPanelHtml(
       min-width: 100px;
       outline: none;
     }
-    .url-input {
+    .url-input-container {
+      position: relative;
       flex: 1;
+      display: flex;
+      align-items: center;
+      min-width: 0;
       background: var(--surface);
       border: 1px solid var(--border);
-      color: var(--text);
       border-radius: 4px;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    .url-input-container:focus-within {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 1px var(--primary);
+    }
+    .input-highlight-backdrop {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      pointer-events: none;
+      overflow: hidden;
+      white-space: pre;
+      font-family: monospace;
+      font-size: 13px;
+      line-height: normal;
+      padding: 7px 12px;
+      color: transparent;
+      box-sizing: border-box;
+      user-select: none;
+      display: flex;
+      align-items: center;
+    }
+    .url-input {
+      width: 100%;
+      background: transparent !important;
+      border: none !important;
+      color: var(--text);
       padding: 7px 12px;
       font-family: monospace;
       font-size: 13px;
       outline: none;
+      position: relative;
+      z-index: 1;
     }
-    .url-input:focus { border-color: var(--primary); }
 
     /* Button styles */
     .btn {
@@ -399,45 +490,71 @@ export function getRequestPanelHtml(
       border: 1px solid var(--border);
       border-radius: 6px;
       overflow: hidden;
-      min-height: 380px;
+      min-height: 0;
+      flex: 1;
+      height: 100%;
     }
 
     /* Tabs */
     .tab-header {
       display: flex;
+      gap: 2px;
       border-bottom: 1px solid var(--border);
       background: rgba(0,0,0,0.15);
       overflow-x: auto;
+      padding: 0 4px;
+      flex-shrink: 0;
     }
     .tab-btn {
       padding: 8px 14px;
       background: transparent;
       border: none;
       border-bottom: 2px solid transparent;
+      border-top-left-radius: 4px;
+      border-top-right-radius: 4px;
+      border-bottom-left-radius: 0;
+      border-bottom-right-radius: 0;
+      margin-bottom: -1px;
       color: var(--muted);
       cursor: pointer;
       font-size: 12px;
       font-weight: 500;
       white-space: nowrap;
+      transition: all 0.15s ease;
+    }
+    .tab-btn:hover {
+      color: var(--text);
+      background: rgba(255,255,255,0.03);
     }
     .tab-btn.active {
       color: var(--text);
+      font-weight: 600;
       border-bottom-color: var(--primary);
-      background: rgba(255,255,255,0.03);
+      background: rgba(255,255,255,0.05);
     }
     .tab-content {
       padding: 12px;
       flex: 1;
       display: none;
       overflow: auto;
+      min-height: 0;
     }
-    .tab-content.active { display: block; }
+    .tab-content.active {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+      height: 100%;
+    }
     #tab-resp-body {
       padding: 0;
     }
     #tab-resp-body.active {
       display: flex;
       flex-direction: column;
+      flex: 1;
+      min-height: 0;
+      height: 100%;
     }
     #tab-resp-headers {
       padding: 0;
@@ -657,66 +774,203 @@ export function getRequestPanelHtml(
     .textarea-box {
       width: 100%;
       height: 100%;
-      min-height: 240px;
+      min-height: 0;
+      flex: 1;
       background: var(--surface);
       border: 1px solid var(--border);
       color: var(--text);
-      padding: 10px;
+      padding: 10px 12px;
       border-radius: 4px;
-      font-family: monospace;
+      font-family: Consolas, Monaco, "Courier New", monospace;
       font-size: 12px;
-      resize: vertical;
+      line-height: 1.5;
+      resize: none;
       outline: none;
+      box-sizing: border-box;
+      tab-size: 2;
+    }
+    .textarea-box:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 1px var(--primary);
     }
 
-    /* Body Type Selector */
+    /* Code Editor with Live Syntax Highlighting & Line Numbers */
+    .code-editor-container {
+      display: flex;
+      flex: 1;
+      width: 100%;
+      height: 100%;
+      min-height: 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+      position: relative;
+      box-sizing: border-box;
+    }
+    .code-editor-container:focus-within {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 1px var(--primary);
+    }
+    .code-editor-gutter {
+      width: 44px;
+      padding: 10px 8px 10px 0;
+      text-align: right;
+      font-family: Consolas, Monaco, "Courier New", monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      color: var(--muted);
+      background: rgba(0, 0, 0, 0.18);
+      border-right: 1px solid var(--border);
+      user-select: none;
+      overflow: hidden;
+      white-space: pre;
+      box-sizing: border-box;
+      flex-shrink: 0;
+    }
+    .code-editor-surface {
+      position: relative;
+      flex: 1;
+      height: 100%;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .code-editor-backdrop {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      margin: 0;
+      padding: 10px 12px;
+      font-family: Consolas, Monaco, "Courier New", monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      tab-size: 2;
+      pointer-events: none;
+      overflow: hidden;
+      white-space: pre-wrap;
+      word-break: break-all;
+      box-sizing: border-box;
+      background: transparent;
+      color: var(--text);
+    }
+    .code-editor-backdrop code {
+      font-family: inherit;
+      font-size: inherit;
+      line-height: inherit;
+      background: transparent;
+      padding: 0;
+    }
+    .code-editor-textarea {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 10px 12px;
+      font-family: Consolas, Monaco, "Courier New", monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      tab-size: 2;
+      color: transparent;
+      caret-color: var(--vscode-editorCursor-foreground, #aeafad);
+      background: transparent;
+      border: none;
+      outline: none;
+      resize: none;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      box-sizing: border-box;
+      z-index: 2;
+    }
+    .code-editor-textarea::selection {
+      background: rgba(14, 99, 156, 0.45);
+      color: transparent;
+    }
+
+    .json-variable {
+      color: #4ec9b0;
+      background: rgba(78, 201, 176, 0.14);
+      padding: 1px 4px;
+      border-radius: 3px;
+      font-weight: 600;
+      border: 1px solid rgba(78, 201, 176, 0.3);
+    }
+    .json-punct {
+      color: var(--text, #d4d4d4);
+      opacity: 0.85;
+    }
+
+    /* Body Type Selector as Connected Subtabs */
     .body-nav {
       display: flex;
-      gap: 6px;
-      margin-bottom: 12px;
-      padding-bottom: 8px;
+      gap: 2px;
+      margin-bottom: 8px;
       border-bottom: 1px solid var(--border);
       overflow-x: auto;
-      align-items: center;
+      align-items: flex-end;
+      padding: 0;
+      flex-shrink: 0;
     }
     .radio-pill {
       display: inline-flex;
       align-items: center;
-      gap: 5px;
-      font-size: 11px;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 500;
       color: var(--muted);
       cursor: pointer;
-      padding: 3px 8px;
-      border-radius: 4px;
-      border: 1px solid transparent;
+      padding: 7px 13px;
+      border: none;
+      border-bottom: 2px solid transparent;
+      border-top-left-radius: 4px;
+      border-top-right-radius: 4px;
+      border-bottom-left-radius: 0;
+      border-bottom-right-radius: 0;
+      margin-bottom: -1px;
       user-select: none;
       white-space: nowrap;
-    }
-    .radio-pill:hover {
-      background: rgba(255,255,255,0.04);
-      color: var(--text);
+      transition: all 0.15s ease;
+      background: transparent;
     }
     .radio-pill input[type="radio"] {
-      cursor: pointer;
-      margin: 0;
+      display: none;
+    }
+    .radio-pill:hover {
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--text);
     }
     .radio-pill.selected {
       color: var(--text);
       font-weight: 600;
-      background: rgba(255,255,255,0.06);
-      border-color: var(--border);
+      background: rgba(255, 255, 255, 0.05);
+      border-bottom-color: var(--primary);
     }
     .body-subview {
-      display: flex;
+      display: none;
       flex-direction: column;
       flex: 1;
-      min-height: 240px;
+      min-height: 0;
+      height: 100%;
+    }
+    .script-subview {
+      display: none;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+      height: 100%;
     }
     .body-subview-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
       margin-bottom: 8px;
+      flex-shrink: 0;
     }
     .body-mime-badge {
       font-size: 11px;
@@ -793,8 +1047,26 @@ export function getRequestPanelHtml(
       font-family: Consolas, Monaco, "Courier New", monospace;
       font-size: 12px;
       white-space: pre-wrap;
-      word-break: break-word;
-      overflow: auto;
+      line-height: 1.5;
+    }
+    .json-key {
+      color: var(--vscode-symbolIcon-propertyForeground, #9cdcfe);
+      font-weight: 600;
+    }
+    .json-string {
+      color: var(--vscode-debugTokenExpression-string, #ce9178);
+      word-break: break-all;
+    }
+    .json-number {
+      color: var(--vscode-debugTokenExpression-number, #b5cea8);
+    }
+    .json-boolean {
+      color: var(--vscode-debugTokenExpression-boolean, #569cd6);
+      font-weight: 600;
+    }
+    .json-null {
+      color: var(--vscode-debugTokenExpression-boolean, #569cd6);
+      font-style: italic;
     }
 
     .headers-table {
@@ -822,18 +1094,18 @@ export function getRequestPanelHtml(
     .url-preview-bar {
       font-size: 11px;
       color: var(--muted);
-      padding: 3px 6px 3px 10px;
+      padding: 4px 10px;
       background: var(--surface);
       border-bottom: 1px solid var(--border);
-      min-height: 20px;
-      line-height: 18px;
+      min-height: 24px;
+      line-height: 20px;
       font-family: Consolas, Monaco, "Courier New", monospace;
       white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      overflow-x: auto;
       display: flex;
       align-items: center;
       gap: 6px;
+      transition: background 0.15s ease, border-color 0.15s ease;
     }
     .url-preview-bar.has-unresolved {
       background: rgba(241, 76, 76, 0.06);
@@ -842,22 +1114,212 @@ export function getRequestPanelHtml(
     .url-preview-label {
       color: var(--muted);
       font-family: var(--vscode-font-family, inherit);
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: 0.4px;
+      font-size: 11px;
+      font-weight: 600;
       flex-shrink: 0;
     }
     .url-preview-resolved {
       flex: 1;
+      display: inline-flex;
+      align-items: center;
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      gap: 2px;
+    }
+    .token-hl {
+      display: inline-block;
+      border-radius: 3px;
+      padding: 0 1px;
+      color: transparent;
+      user-select: none;
+      pointer-events: none;
+      height: 1.2em;
+      line-height: 1.2em;
+      vertical-align: middle;
+    }
+    .token-hl.resolved {
+      background: rgba(78, 201, 176, 0.28);
+      border-bottom: 2px solid #4ec9b0;
+    }
+    .token-hl.unresolved {
+      background: rgba(241, 76, 76, 0.28);
+      border-bottom: 2px wavy #f14c4c;
+    }
+
+    /* Enhanced URL Preview Bar Tokens */
+    .token-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-family: Consolas, Monaco, monospace;
+      margin: 0 2px;
+      vertical-align: middle;
+      cursor: help;
+      transition: all 0.12s ease;
+      white-space: nowrap;
+    }
+    .token-pill.resolved-token {
+      color: #4ec9b0;
+      background: rgba(78, 201, 176, 0.12);
+      border: 1px solid rgba(78, 201, 176, 0.35);
+    }
+    .token-pill.resolved-token:hover {
+      background: rgba(78, 201, 176, 0.22);
+      border-color: #4ec9b0;
+    }
+    .token-pill.unresolved-token {
+      color: #f14c4c;
+      background: rgba(241, 76, 76, 0.12);
+      border: 1px solid rgba(241, 76, 76, 0.35);
+    }
+    .token-pill.unresolved-token:hover {
+      background: rgba(241, 76, 76, 0.22);
+      border-color: #f14c4c;
+    }
+    .token-pill .token-sym {
+      font-weight: 700;
+      font-size: 10px;
+    }
+    .token-pill .token-arrow {
+      color: var(--muted);
+      font-size: 10px;
+    }
+    .token-pill .token-val {
+      color: #ce9178;
+      font-weight: 600;
+    }
+    .token-pill.url-resolved-pill {
+      cursor: pointer;
+      user-select: text;
+      padding: 2px 8px;
+      font-size: 11px;
+      max-width: calc(100% - 150px);
       overflow: hidden;
       text-overflow: ellipsis;
+      transition: all 0.15s ease;
     }
-    .unresolved-token {
-      color: #f14c4c;
+    .token-pill.url-resolved-pill .token-val-url {
+      color: #4ec9b0;
+      font-weight: 600;
+      letter-spacing: 0.2px;
+      font-family: Consolas, Monaco, monospace;
+    }
+    .token-pill.url-resolved-pill:hover {
+      background: rgba(78, 201, 176, 0.22);
+      border-color: #4ec9b0;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+    }
+    .token-pill.url-resolved-pill .token-copy-icon {
+      margin-left: 6px;
+      font-size: 10px;
+      opacity: 0.6;
+      cursor: pointer;
+    }
+    .token-pill.url-resolved-pill:hover .token-copy-icon {
+      opacity: 1;
+    }
+    .url-part-text {
+      color: var(--foreground);
+      font-family: Consolas, Monaco, monospace;
+      font-size: 11px;
+    }
+    .tokens-summary-badge {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      flex-shrink: 0;
+      margin-left: auto;
+    }
+    .tokens-summary-badge.all-resolved {
+      background: rgba(78, 201, 176, 0.15);
+      color: #4ec9b0;
+      border: 1px solid rgba(78, 201, 176, 0.3);
+    }
+    .tokens-summary-badge.has-unresolved {
       background: rgba(241, 76, 76, 0.15);
-      border-radius: 2px;
-      padding: 0 2px;
-      font-family: Consolas, Monaco, "Courier New", monospace;
+      color: #f14c4c;
+      border: 1px solid rgba(241, 76, 76, 0.3);
+    }
+
+    /* Row Variable Resolution Chips for Headers & Variables */
+    .row-var-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      font-size: 10px;
+      font-family: Consolas, Monaco, monospace;
+      padding: 1px 6px;
+      border-radius: 3px;
+      white-space: nowrap;
+      cursor: help;
+      max-width: 140px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      transition: all 0.15s ease;
+    }
+    .row-var-chip.resolved {
+      color: #4ec9b0;
+      background: rgba(78, 201, 176, 0.12);
+      border: 1px solid rgba(78, 201, 176, 0.3);
+    }
+    .row-var-chip.unresolved {
+      color: #f14c4c;
+      background: rgba(241, 76, 76, 0.12);
+      border: 1px solid rgba(241, 76, 76, 0.3);
+    }
+    .param-input.has-unresolved-vars {
+      border-color: rgba(241, 76, 76, 0.6) !important;
+      background: rgba(241, 76, 76, 0.04);
+    }
+    .param-input.has-resolved-vars {
+      border-color: rgba(78, 201, 176, 0.5) !important;
+    }
+
+    /* Auth Variable Status Banner */
+    .auth-var-status {
+      font-size: 11px;
+      font-family: Consolas, Monaco, monospace;
+      padding: 3px 8px;
+      border-radius: 4px;
+      margin-top: 4px;
+    }
+    .auth-var-status.resolved {
+      background: rgba(78, 201, 176, 0.12);
+      border: 1px solid rgba(78, 201, 176, 0.3);
+      color: #4ec9b0;
+    }
+    .auth-var-status.unresolved {
+      background: rgba(241, 76, 76, 0.12);
+      border: 1px solid rgba(241, 76, 76, 0.3);
+      color: #f14c4c;
+    }
+
+    /* Body Variable Indicator Pill */
+    .body-var-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      cursor: help;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    .body-var-indicator.all-resolved {
+      color: #4ec9b0;
+      background: rgba(78, 201, 176, 0.12);
+      border: 1px solid rgba(78, 201, 176, 0.3);
+    }
+    .body-var-indicator.has-unresolved {
+      color: #f14c4c;
+      background: rgba(241, 76, 76, 0.12);
+      border: 1px solid rgba(241, 76, 76, 0.3);
     }
     .url-preview-warn {
       color: #f14c4c;
@@ -883,10 +1345,56 @@ export function getRequestPanelHtml(
       color: #ffffff;
       border-color: var(--primary);
     }
+    /* Connected Subtabs (Scripts, etc.) */
+    .subtab-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 12px;
+      padding: 0;
+    }
+    .subtab-nav {
+      display: flex;
+      gap: 2px;
+    }
+    .subtab-btn {
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      border-top-left-radius: 4px;
+      border-top-right-radius: 4px;
+      border-bottom-left-radius: 0;
+      border-bottom-right-radius: 0;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      padding: 7px 14px;
+      margin-bottom: -1px;
+      user-select: none;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .subtab-btn:hover {
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.03);
+    }
+    .subtab-btn.active,
     .script-type-btn.active {
-      background: var(--primary);
-      color: var(--primary-fg);
-      border-color: var(--primary);
+      color: var(--text);
+      font-weight: 600;
+      background: rgba(255, 255, 255, 0.05);
+      border-bottom-color: var(--primary);
+    }
+    .subtab-meta {
+      font-size: 11px;
+      color: var(--muted);
+      padding-bottom: 6px;
+      padding-right: 4px;
     }
 
     /* Test Results Cards */
@@ -988,13 +1496,29 @@ export function getRequestPanelHtml(
       </div>
       <div class="selectors">
         <div class="selector-group">
+          <span id="profile-indicator-dot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${activeProfileColor}; box-shadow: 0 0 6px ${activeProfileColor}aa; flex-shrink: 0; margin-right: 4px;"></span>
           <span>Profile:</span>
           <select id="select-profile" class="select-control">${profileOptions}</select>
+          <span id="profile-guard-badge" class="pill" style="display: none; font-size: 10px; padding: 1px 6px; margin-left: 4px; font-weight: 600; cursor: help; border-radius: 4px;">🛡️ Guarded</span>
         </div>
         <div class="selector-group">
           <span>Environment:</span>
           <select id="select-env" class="select-control">${environmentOptions}</select>
         </div>
+        <div class="selector-group">
+          <span>Base URL:</span>
+          <select id="select-base-url-pref" class="select-control" title="Choose which Base URL has precedence for {{baseUrl}} and relative paths">
+            <option value="auto" ${!context.baseUrlPreference || (context.baseUrlPreference as any) === 'auto' ? 'selected' : ''}>Auto (Collection Default)</option>
+            <option value="collection" ${context.baseUrlPreference === 'collection' ? 'selected' : ''}>Collection Base URL</option>
+            <option value="environment" ${context.baseUrlPreference === 'environment' ? 'selected' : ''}>Environment Base URL</option>
+            <option value="none" ${context.baseUrlPreference === 'none' ? 'selected' : ''}>Disabled (No Base URL)</option>
+          </select>
+        </div>
+        <button id="btn-open-settings" class="icon-btn" type="button" title="Open Settings & Manage Profiles" style="padding: 4px 6px; border: 1px solid var(--border); border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M9.1 4.4L8.6 2H7.4l-.5 2.4-.7.3-2-1.3-.9.8 1.3 2-.2.7-2.5.5v1.2l2.5.5.3.8-1.4 1.9.8.8 2-1.3.8.3.4 2.5h1.2l.5-2.5.7-.3 2 1.3.8-.8-1.3-2 .3-.7 2.5-.5V7.4l-2.5-.5-.3-.7 1.3-2-.8-.8-2 1.3-.7-.3zM8 11c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3z"/>
+          </svg>
+        </button>
       </div>
     </div>
 
@@ -1010,13 +1534,18 @@ export function getRequestPanelHtml(
         <option ${context.method === 'OPTIONS' ? 'selected' : ''}>OPTIONS</option>
       </select>
 
-      <input
-        id="url-input"
-        class="url-input"
-        type="text"
-        placeholder="Enter URL or {{baseUrl}}/endpoint"
-        value="${escapeHtml(context.url || '')}"
-      />
+      <div class="url-input-container">
+        <div id="url-highlight-backdrop" class="input-highlight-backdrop" aria-hidden="true"></div>
+        <input
+          id="url-input"
+          class="url-input"
+          type="text"
+          placeholder="Enter URL or {{baseUrl}}/endpoint"
+          value="${escapeHtml(context.url || '')}"
+          spellcheck="false"
+          autocomplete="off"
+        />
+      </div>
 
       <div class="btn-group">
         <button id="btn-send" class="btn btn-primary btn-split-main">Send</button>
@@ -1135,10 +1664,22 @@ export function getRequestPanelHtml(
           <!-- JSON Subview -->
           <div id="body-view-json" class="body-subview" style="display: none;">
             <div class="body-subview-header">
-              <span class="body-mime-badge">application/json</span>
-              <button id="btn-fmt-json" class="btn btn-secondary" style="font-size: 11px; padding: 2px 8px;">Beautify JSON</button>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span class="body-mime-badge">application/json</span>
+                <span id="json-syntax-indicator" style="font-size: 11px; font-weight: 500;"></span>
+              </div>
+              <div style="display: flex; gap: 6px;">
+                <button id="btn-fmt-json" class="btn btn-secondary" style="font-size: 11px; padding: 2px 8px;" title="Format JSON with indentation">Beautify JSON</button>
+                <button id="btn-edit-body-json" class="btn btn-secondary" style="font-size: 11px; padding: 2px 8px;" title="Open in VS Code Editor (Monaco)">↗ Open in Editor</button>
+              </div>
             </div>
-            <textarea id="req-body-json" class="textarea-box" placeholder="{\n  &quot;key&quot;: &quot;value&quot;\n}"></textarea>
+            <div class="code-editor-container">
+              <div id="json-line-numbers" class="code-editor-gutter" aria-hidden="true">1</div>
+              <div class="code-editor-surface">
+                <pre id="json-highlight-backdrop" class="code-editor-backdrop" aria-hidden="true"><code id="json-highlight-code"></code></pre>
+                <textarea id="req-body-json" class="code-editor-textarea" spellcheck="false" placeholder="{\n  &quot;key&quot;: &quot;value&quot;\n}"></textarea>
+              </div>
+            </div>
           </div>
 
           <!-- Form URL Encoded Subview -->
@@ -1153,8 +1694,8 @@ export function getRequestPanelHtml(
                 <button id="btn-add-urlencoded" class="btn btn-secondary" style="font-size: 11px; padding: 4px 10px;">+ Add Field</button>
               </div>
             </div>
-            <div id="urlencoded-bulk-view" style="display: none;">
-              <textarea id="req-body-urlencoded-bulk" class="textarea-box" placeholder="key1=value1&#10;key2=value2" style="min-height: 200px;"></textarea>
+            <div id="urlencoded-bulk-view" style="display: none; flex: 1; min-height: 0; height: 100%;">
+              <textarea id="req-body-urlencoded-bulk" class="textarea-box" placeholder="key1=value1&#10;key2=value2"></textarea>
             </div>
           </div>
 
@@ -1215,13 +1756,13 @@ export function getRequestPanelHtml(
 
         <!-- Tab: Scripts -->
         <div id="tab-scripts" class="tab-content">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; border-bottom:1px solid var(--border); padding-bottom:6px;">
-            <div style="display:flex; gap:6px;">
-              <button type="button" class="btn btn-secondary script-type-btn active" data-script-view="pre" style="font-size:11px; padding:3px 10px;">Pre-Request Script</button>
-              <button type="button" class="btn btn-secondary script-type-btn" data-script-view="post" style="font-size:11px; padding:3px 10px;">Post-Response Script (Tests)</button>
+          <div class="subtab-bar">
+            <div class="subtab-nav">
+              <button type="button" class="subtab-btn script-type-btn active" data-script-view="pre">Pre-Request Script</button>
+              <button type="button" class="subtab-btn script-type-btn" data-script-view="post">Post-Response Script (Tests)</button>
             </div>
-            <div style="font-size:11px; color:var(--muted);">
-              Access globals: <code style="color:#4ec9b0;">bb</code> & <code style="color:#4ec9b0;">pm</code>
+            <div class="subtab-meta">
+              Access globals: <code style="color:#4ec9b0;">bb</code> &amp; <code style="color:#4ec9b0;">pm</code>
             </div>
           </div>
 
@@ -1236,18 +1777,18 @@ export function getRequestPanelHtml(
             <button type="button" class="snippet-btn" data-snippet="hash-sha256">+ SHA-256</button>
           </div>
 
-          <div id="script-view-pre" class="script-subview">
-            <div style="font-size:11px; color:var(--muted); margin-bottom:6px;">
+          <div id="script-view-pre" class="script-subview" style="display: flex;">
+            <div style="font-size:11px; color:var(--muted); margin-bottom:6px; flex-shrink: 0;">
               Runs before sending. Mutate <code>bb.request.headers</code>, <code>bb.request.body</code>, or set variables.
             </div>
-            <textarea id="req-pre-script" class="textarea-box" style="min-height:220px; font-family:Consolas, Monaco, monospace; font-size:12px;" placeholder="// Example: set dynamic timestamp or signature&#10;bb.request.headers['X-Timestamp'] = Date.now().toString();&#10;bb.environment.set('reqId', crypto.randomUUID());">${escapeHtml(context.preRequestScript || '')}</textarea>
+            <textarea id="req-pre-script" class="textarea-box" placeholder="// Example: set dynamic timestamp or signature&#10;bb.request.headers['X-Timestamp'] = Date.now().toString();&#10;bb.environment.set('reqId', crypto.randomUUID());">${escapeHtml(context.preRequestScript || '')}</textarea>
           </div>
 
-          <div id="script-view-post" class="script-subview" style="display:none;">
-            <div style="font-size:11px; color:var(--muted); margin-bottom:6px;">
+          <div id="script-view-post" class="script-subview" style="display: none;">
+            <div style="font-size:11px; color:var(--muted); margin-bottom:6px; flex-shrink: 0;">
               Runs after response. Assert tests with <code>bb.test()</code> and <code>bb.expect()</code>, or store tokens with <code>bb.environment.set()</code>.
             </div>
-            <textarea id="req-post-script" class="textarea-box" style="min-height:220px; font-family:Consolas, Monaco, monospace; font-size:12px;" placeholder="// Example: assert status 200 and store token&#10;bb.test('Status is 200', () => {&#10;  bb.expect(bb.response.status).toBe(200);&#10;});&#10;&#10;const data = bb.response.json();&#10;if (data.token) {&#10;  bb.environment.set('authToken', data.token);&#10;}">${escapeHtml(context.postResponseScript || '')}</textarea>
+            <textarea id="req-post-script" class="textarea-box" placeholder="// Example: assert status 200 and store token&#10;bb.test('Status is 200', () => {&#10;  bb.expect(bb.response.status).toBe(200);&#10;});&#10;&#10;const data = bb.response.json();&#10;if (data.token) {&#10;  bb.environment.set('authToken', data.token);&#10;}">${escapeHtml(context.postResponseScript || '')}</textarea>
           </div>
         </div>
 
@@ -1265,8 +1806,10 @@ export function getRequestPanelHtml(
             <span id="resp-time" class="meta-tag"></span>
             <span id="resp-size" class="meta-tag"></span>
           </div>
-          <div class="response-actions">
-            <button id="btn-copy-resp" class="btn btn-secondary" style="font-size: 11px; padding: 2px 8px;">Copy</button>
+          <div class="response-actions" style="display: flex; align-items: center; gap: 6px;">
+            <button id="btn-format-resp" class="btn btn-secondary" style="font-size: 11px; padding: 2px 8px;" title="Toggle Raw / Formatted Colorized JSON">Raw</button>
+            <button id="btn-copy-resp" class="btn btn-secondary" style="font-size: 11px; padding: 2px 8px;" title="Copy Response Body">Copy</button>
+            <button id="btn-open-editor" class="btn btn-secondary" style="font-size: 11px; padding: 2px 8px;" title="Open Response in VS Code Editor (Monaco)">↗ Editor</button>
           </div>
         </div>
 
@@ -1318,8 +1861,11 @@ export function getRequestPanelHtml(
     let initialVars = ${JSON.stringify(context.variables || []).replace(/</g, '\\u003c')};
     let initialInheritedVars = ${JSON.stringify(initialInheritedVars).replace(/</g, '\\u003c')};
     let initialInheritedHeaders = ${JSON.stringify(initialInheritedHeaders).replace(/</g, '\\u003c')};
+    let initialResolvedVars = ${JSON.stringify(initialResolvedVars || {}).replace(/</g, '\\u003c')};
     let currentInheritedVars = initialInheritedVars;
     let currentInheritedHeaders = initialInheritedHeaders;
+    let currentResolvedVars = initialResolvedVars;
+    let currentEnvironments = ${JSON.stringify(environmentsData).replace(/</g, '\\u003c')};
     let initialBodyType = "${escapeHtml(context.bodyType || '')}";
     let initialBody = ${JSON.stringify(context.body || '').replace(/</g, '\\u003c')};
     let initialBodyFormData = ${JSON.stringify(context.bodyFormData || []).replace(/</g, '\\u003c')};
@@ -1358,8 +1904,8 @@ export function getRequestPanelHtml(
         const view = btn.getAttribute('data-script-view');
         const preView = document.getElementById('script-view-pre');
         const postView = document.getElementById('script-view-post');
-        if (preView) preView.style.display = view === 'pre' ? 'block' : 'none';
-        if (postView) postView.style.display = view === 'post' ? 'block' : 'none';
+        if (preView) preView.style.display = view === 'pre' ? 'flex' : 'none';
+        if (postView) postView.style.display = view === 'post' ? 'flex' : 'none';
       });
     });
 
@@ -1418,86 +1964,538 @@ export function getRequestPanelHtml(
     const urlPreviewText = document.getElementById('url-preview-text');
     const urlPreviewWarn = document.getElementById('url-preview-warn');
 
-    function updateUrlPreview() {
-      const urlInput = document.getElementById('url-input');
-      if (!urlInput || !urlPreviewBar || !urlPreviewText) return;
-      const raw = urlInput.value.trim();
+    function safeEscape(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
 
-      if (!raw) {
-        urlPreviewBar.style.display = 'none';
-        return;
-      }
-
-      // Build merged variable map: inherited (lower priority) → request vars (higher priority)
+    function getActiveVariableMap() {
       const varMap = {};
+
+      // 1. Dynamic system variables ($uuid, $timestamp, etc.)
+      const dynamicKeys = ['$uuid', '$timestamp', '$isoDate', '$randomInt', '$rowIndex'];
+      dynamicKeys.forEach(k => {
+        varMap[k] = { value: '<dynamic>', source: 'Dynamic System' };
+      });
+
+      // 2. Inherited variables (environments, profiles, collections, folders)
       if (currentInheritedVars && currentInheritedVars.length) {
-        // Walk in resolution order; last writer wins (matches server-side precedence)
         for (const item of currentInheritedVars) {
           if (!item.isOverridden && item.key && item.value !== undefined) {
-            varMap[item.key] = String(item.value);
-          }
-        }
-        // Also include overridden entries so we have all keys, but only if not already set
-        for (const item of currentInheritedVars) {
-          if (item.isOverridden && item.key && !(item.key in varMap)) {
-            varMap[item.key] = String(item.value ?? '');
+            varMap[item.key] = {
+              value: String(item.value),
+              source: item.sourceName ? (item.source + ': ' + item.sourceName) : item.source
+            };
           }
         }
       }
-      // Request-level vars override everything
+
+      // 2b. Ground-truth fallback: any variables resolved by backend engine
+      if (currentResolvedVars && typeof currentResolvedVars === 'object') {
+        for (const k in currentResolvedVars) {
+          if (!varMap[k] && currentResolvedVars[k] !== undefined && !k.startsWith('$')) {
+            varMap[k] = {
+              value: String(currentResolvedVars[k]),
+              source: 'Inherited'
+            };
+          }
+        }
+      }
+
+      // 3. Request-level variables override everything
       if (varRowsContainer) {
         varRowsContainer.querySelectorAll('.param-row').forEach(row => {
           const enabled = row.querySelector('[data-role="enabled"]')?.checked;
           const name = (row.querySelector('[data-role="name"]')?.value || '').trim();
           const value = row.querySelector('[data-role="value"]')?.value || '';
-          if (enabled && name) varMap[name] = value;
+          if (enabled && name) {
+            varMap[name] = { value: value, source: 'Request Variables' };
+          }
         });
       }
 
-      // Tokenise the URL: split on {{varName}} tokens
-      const TOKEN_RE = /\\{\\{([^}]+)\\}\\}/g;
-      let hasUnresolved = false;
+      return varMap;
+    }
 
-      // Build an array of [text | token] segments
+    // Helper to recursively resolve variable expressions in a string
+    function resolveRecursively(text, varMap, maxDepth) {
+      if (maxDepth === undefined) maxDepth = 5;
+      if (!varMap) varMap = getActiveVariableMap();
+      if (!text || typeof text !== 'string') {
+        return {
+          resolvedText: text || '',
+          hasVariables: false,
+          hasUnresolved: false,
+          hasResolved: false,
+          resolvedTokens: [],
+          unresolvedTokens: [],
+          resolvedCount: 0,
+          unresolvedCount: 0,
+          allUsedMap: {},
+          hasImplicitBaseUrl: false
+        };
+      }
+
+      const simpleVars = {};
+      const sources = {};
+      for (const k in varMap) {
+        if (varMap[k] && varMap[k].value !== undefined) {
+          simpleVars[k] = String(varMap[k].value);
+          sources[k] = varMap[k].source || 'Variables';
+        }
+      }
+
+      let workingText = text;
+      let hasImplicitBaseUrl = false;
+      if (workingText.startsWith('/') && simpleVars['baseUrl']) {
+        workingText = '{{baseUrl}}' + workingText;
+        hasImplicitBaseUrl = true;
+      }
+
+      const TOKEN_RE = /\{\{([a-zA-Z0-9_.:$-]+)\}\}/g;
+      const initialMatches = workingText.match(TOKEN_RE);
+      if (!initialMatches) {
+        return {
+          resolvedText: text,
+          hasVariables: false,
+          hasUnresolved: false,
+          hasResolved: false,
+          resolvedTokens: [],
+          unresolvedTokens: [],
+          resolvedCount: 0,
+          unresolvedCount: 0,
+          allUsedMap: {},
+          hasImplicitBaseUrl: false
+        };
+      }
+
+      const usedMap = {};
+      const unresolvedSet = new Set();
+      let current = workingText;
+      let depth = 0;
+      let changed = true;
+
+      while (depth < maxDepth && changed) {
+        changed = false;
+        TOKEN_RE.lastIndex = 0;
+        current = current.replace(TOKEN_RE, (match, rawKey) => {
+          const key = rawKey.trim();
+          if (key.startsWith('$')) {
+            changed = true;
+            let dynVal = '<dynamic>';
+            if (key === '$uuid') dynVal = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx';
+            else if (key === '$timestamp') dynVal = String(Date.now());
+            else if (key === '$isoDate') dynVal = new Date().toISOString();
+            else if (key === '$randomInt') dynVal = '123456';
+            else if (key === '$rowIndex') dynVal = '0';
+            usedMap[key] = { key: key, raw: match, value: dynVal, source: 'Dynamic System' };
+            return dynVal;
+          }
+          if (Object.prototype.hasOwnProperty.call(simpleVars, key)) {
+            changed = true;
+            const val = simpleVars[key];
+            usedMap[key] = { key: key, raw: match, value: val, source: sources[key] || 'Variables' };
+            return val;
+          }
+          return match;
+        });
+        depth++;
+      }
+
+      // Check for remaining unresolved tokens in current
+      TOKEN_RE.lastIndex = 0;
+      let rem;
+      while ((rem = TOKEN_RE.exec(current)) !== null) {
+        const unKey = rem[1].trim();
+        unresolvedSet.add(unKey);
+      }
+
+      const resolvedTokens = Object.values(usedMap);
+      const unresolvedTokens = Array.from(unresolvedSet);
+
+      // Compute final flattened values for tooltip
+      for (const item of resolvedTokens) {
+        let val = item.value;
+        let d = 0;
+        let ch = true;
+        while (d < maxDepth && ch) {
+          ch = false;
+          TOKEN_RE.lastIndex = 0;
+          val = val.replace(TOKEN_RE, (m, k) => {
+            k = k.trim();
+            if (Object.prototype.hasOwnProperty.call(simpleVars, k)) {
+              ch = true;
+              return simpleVars[k];
+            }
+            return m;
+          });
+          d++;
+        }
+        item.finalValue = val;
+      }
+
+      return {
+        resolvedText: current,
+        hasVariables: resolvedTokens.length > 0 || unresolvedTokens.length > 0,
+        hasUnresolved: unresolvedTokens.length > 0,
+        hasResolved: resolvedTokens.length > 0,
+        resolvedTokens: resolvedTokens,
+        unresolvedTokens: unresolvedTokens,
+        resolvedCount: resolvedTokens.length,
+        unresolvedCount: unresolvedTokens.length,
+        allUsedMap: usedMap,
+        hasImplicitBaseUrl: hasImplicitBaseUrl
+      };
+    }
+
+    function analyzeVariables(text, varMap) {
+      if (!varMap) varMap = getActiveVariableMap();
+      if (!text || typeof text !== 'string') {
+        return {
+          tokens: [],
+          hasVariables: false,
+          hasUnresolved: false,
+          hasResolved: false,
+          resolvedCount: 0,
+          unresolvedCount: 0,
+          segments: [{ type: 'text', text: '' }]
+        };
+      }
+
+      const TOKEN_RE = /\{\{([^}]+)\}\}/g;
       const segments = [];
+      const tokens = [];
       let lastIndex = 0;
       let match;
-      TOKEN_RE.lastIndex = 0;
-      while ((match = TOKEN_RE.exec(raw)) !== null) {
+      let resolvedCount = 0;
+      let unresolvedCount = 0;
+
+      while ((match = TOKEN_RE.exec(text)) !== null) {
         if (match.index > lastIndex) {
-          segments.push({ type: 'text', value: raw.slice(lastIndex, match.index) });
+          segments.push({ type: 'text', text: text.slice(lastIndex, match.index) });
         }
+
+        const raw = match[0];
         const key = match[1].trim();
-        const resolved = varMap[key];
-        if (resolved !== undefined) {
-          segments.push({ type: 'resolved', value: resolved });
-        } else {
-          segments.push({ type: 'unresolved', value: match[0] });
-          hasUnresolved = true;
+
+        let isResolved = false;
+        let value = '';
+        let source = '';
+
+        if (key.startsWith('$')) {
+          if (key === '$uuid' || key === '$timestamp' || key === '$isoDate' || key === '$randomInt' || key === '$rowIndex' || key.startsWith('$date:') || key.startsWith('$randomInt:') || key.startsWith('$rowIndex:')) {
+            isResolved = true;
+            value = key === '$uuid' ? 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx' : (key === '$timestamp' ? String(Date.now()) : '<dynamic>');
+            source = 'Dynamic System';
+          }
         }
-        lastIndex = match.index + match[0].length;
-      }
-      if (lastIndex < raw.length) {
-        segments.push({ type: 'text', value: raw.slice(lastIndex) });
+
+        if (!isResolved && varMap[key] !== undefined) {
+          // Check if key itself has unresolved dependencies recursively
+          const subRes = resolveRecursively('{{' + key + '}}', varMap);
+          if (subRes.hasUnresolved) {
+            isResolved = false;
+            value = '';
+            source = 'Missing dependency: ' + subRes.unresolvedTokens.map(k => '{{' + k + '}}').join(', ');
+          } else {
+            isResolved = true;
+            value = subRes.resolvedText;
+            source = varMap[key].source || 'Variables';
+          }
+        }
+
+        const tokenInfo = { raw, key, isResolved, value, source };
+        tokens.push(tokenInfo);
+
+        if (isResolved) {
+          resolvedCount++;
+          segments.push({ type: 'resolved', text: raw, raw, key, value, source });
+        } else {
+          unresolvedCount++;
+          segments.push({ type: 'unresolved', text: raw, raw, key, value: '', source: source || 'Missing' });
+        }
+
+        lastIndex = match.index + raw.length;
       }
 
-      // Render segments into urlPreviewText
-      urlPreviewText.innerHTML = '';
-      for (const seg of segments) {
-        if (seg.type === 'unresolved') {
-          const span = document.createElement('span');
-          span.className = 'unresolved-token';
-          span.textContent = seg.value;
-          span.title = 'Variable not found in current context';
-          urlPreviewText.appendChild(span);
-        } else {
-          urlPreviewText.appendChild(document.createTextNode(seg.value));
+      if (lastIndex < text.length) {
+        segments.push({ type: 'text', text: text.slice(lastIndex) });
+      }
+
+      return {
+        tokens,
+        hasVariables: tokens.length > 0,
+        hasUnresolved: unresolvedCount > 0,
+        hasResolved: resolvedCount > 0,
+        resolvedCount,
+        unresolvedCount,
+        segments
+      };
+    }
+
+    function updateUrlPreview() {
+      const urlInput = document.getElementById('url-input');
+      const urlBackdrop = document.getElementById('url-highlight-backdrop');
+      if (!urlInput || !urlPreviewBar || !urlPreviewText) return;
+      const raw = urlInput.value;
+
+      const varMap = getActiveVariableMap();
+      const analysis = analyzeVariables(raw, varMap);
+      const res = resolveRecursively(raw, varMap);
+
+      // 1. Update In-Input Highlight Backdrop
+      if (urlBackdrop) {
+        urlBackdrop.innerHTML = '';
+        for (const seg of analysis.segments) {
+          if (seg.type === 'text') {
+            const span = document.createElement('span');
+            span.style.color = 'transparent';
+            span.textContent = seg.text;
+            urlBackdrop.appendChild(span);
+          } else if (seg.type === 'resolved') {
+            const span = document.createElement('span');
+            span.className = 'token-hl resolved';
+            span.textContent = seg.raw;
+            urlBackdrop.appendChild(span);
+          } else {
+            const span = document.createElement('span');
+            span.className = 'token-hl unresolved';
+            span.textContent = seg.raw;
+            urlBackdrop.appendChild(span);
+          }
         }
+        urlBackdrop.scrollLeft = urlInput.scrollLeft;
+      }
+
+      // 2. Update Live Preview Bar
+      if (!raw.trim() || !res.hasVariables) {
+        urlPreviewBar.style.display = 'none';
+        return;
+      }
+
+      urlPreviewText.innerHTML = '';
+
+      if (!res.hasUnresolved) {
+        // All variables resolved: show the ACTUAL resolved URL in the green box!
+        const pill = document.createElement('span');
+        pill.className = 'token-pill resolved-token url-resolved-pill';
+        pill.id = 'url-resolved-pill';
+
+        const tooltipLines = [
+          'Resolved URL: ' + res.resolvedText,
+          '(Click to copy to clipboard)',
+          '',
+          'Variables resolved:'
+        ];
+        res.resolvedTokens.forEach(t => {
+          tooltipLines.push('• {{' + t.key + '}} = "' + t.finalValue + '" (' + t.source + ')');
+        });
+        pill.title = tooltipLines.join('\\n');
+        pill.innerHTML = '<span class="token-sym">✓</span> <span class="token-val-url">' + safeEscape(res.resolvedText) + '</span> <span class="token-copy-icon" title="Copy resolved URL">📋</span>';
+
+        pill.addEventListener('click', () => {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(res.resolvedText);
+          }
+          const icon = pill.querySelector('.token-copy-icon');
+          if (icon) {
+            const prev = icon.textContent;
+            icon.textContent = '✓ Copied';
+            setTimeout(() => { icon.textContent = prev; }, 1500);
+          }
+        });
+        urlPreviewText.appendChild(pill);
+      } else {
+        // Some variables are unresolved: render resolved portions and highlight unresolved pills
+        const UNRESOLVED_TOKEN_RE = /\{\{([a-zA-Z0-9_.:$-]+)\}\}/g;
+        let lastIdx = 0;
+        let m;
+        while ((m = UNRESOLVED_TOKEN_RE.exec(res.resolvedText)) !== null) {
+          if (m.index > lastIdx) {
+            const textPart = res.resolvedText.slice(lastIdx, m.index);
+            const textSpan = document.createElement('span');
+            textSpan.className = 'url-part-text';
+            textSpan.textContent = textPart;
+            urlPreviewText.appendChild(textSpan);
+          }
+          const unKey = m[1].trim();
+          const unPill = document.createElement('span');
+          unPill.className = 'token-pill unresolved-token';
+          unPill.title = 'Unresolved variable: "{{' + unKey + '}}" is not defined in any active scope';
+          unPill.innerHTML = '<span class="token-sym">⚠</span> {{' + safeEscape(unKey) + '}} <span class="token-arrow">→</span> <span style="font-style:italic;">(not found)</span>';
+          urlPreviewText.appendChild(unPill);
+          lastIdx = m.index + m[0].length;
+        }
+        if (lastIdx < res.resolvedText.length) {
+          const textPart = res.resolvedText.slice(lastIdx);
+          const textSpan = document.createElement('span');
+          textSpan.className = 'url-part-text';
+          textSpan.textContent = textPart;
+          urlPreviewText.appendChild(textSpan);
+        }
+      }
+
+      // Summary badge on right side of preview bar
+      let summaryBadge = urlPreviewBar.querySelector('.tokens-summary-badge');
+      if (!summaryBadge) {
+        summaryBadge = document.createElement('span');
+        summaryBadge.className = 'tokens-summary-badge';
+        urlPreviewBar.appendChild(summaryBadge);
+      }
+
+      summaryBadge.style.display = 'inline-block';
+      if (res.hasUnresolved) {
+        summaryBadge.className = 'tokens-summary-badge has-unresolved';
+        summaryBadge.textContent = '⚠ ' + res.unresolvedCount + ' Unresolved';
+        summaryBadge.title = res.unresolvedTokens.map(k => '{{' + k + '}}').join(', ') + ' not found in current context';
+      } else {
+        summaryBadge.className = 'tokens-summary-badge all-resolved';
+        summaryBadge.textContent = '✓ All Resolved (' + res.resolvedCount + ')';
+        summaryBadge.title = 'All ' + res.resolvedCount + ' variable(s) resolved successfully';
       }
 
       urlPreviewBar.style.display = 'flex';
-      urlPreviewBar.classList.toggle('has-unresolved', hasUnresolved);
-      if (urlPreviewWarn) urlPreviewWarn.style.display = hasUnresolved ? 'inline' : 'none';
+      urlPreviewBar.classList.toggle('has-unresolved', res.hasUnresolved);
+      if (urlPreviewWarn) urlPreviewWarn.style.display = 'none';
+    }
+
+    function updateRowVariableHighlight(row, varMap) {
+      if (!row) return;
+      const valueInput = row.querySelector('[data-role="value"]');
+      if (!valueInput) return;
+      const slot = row.querySelector('.row-var-slot');
+      const val = valueInput.value;
+      const analysis = analyzeVariables(val, varMap);
+
+      if (analysis.hasVariables) {
+        if (analysis.hasUnresolved) {
+          valueInput.classList.add('has-unresolved-vars');
+          valueInput.classList.remove('has-resolved-vars');
+        } else {
+          valueInput.classList.add('has-resolved-vars');
+          valueInput.classList.remove('has-unresolved-vars');
+        }
+
+        if (slot) {
+          let chip = slot.querySelector('.row-var-chip');
+          if (!chip) {
+            chip = document.createElement('span');
+            slot.appendChild(chip);
+          }
+          if (analysis.hasUnresolved) {
+            const missing = analysis.tokens.filter(t => !t.isResolved).map(t => '{{' + t.key + '}}').join(', ');
+            chip.className = 'row-var-chip unresolved';
+            chip.textContent = '⚠ ' + missing;
+            chip.title = 'Unresolved variable: not found in current context';
+            chip.style.display = 'inline-flex';
+          } else {
+            chip.className = 'row-var-chip resolved';
+            chip.textContent = '✓ ' + analysis.tokens.map(t => '{{' + t.key + '}}').join(', ');
+            chip.title = analysis.tokens.map(t => '{{' + t.key + '}} = "' + t.value + '" (' + t.source + ')').join('\\n');
+            chip.style.display = 'inline-flex';
+          }
+        }
+      } else {
+        valueInput.classList.remove('has-unresolved-vars', 'has-resolved-vars');
+        if (slot) {
+          const chip = slot.querySelector('.row-var-chip');
+          if (chip) chip.style.display = 'none';
+        }
+      }
+    }
+
+    function refreshTableVariableHighlights() {
+      const varMap = getActiveVariableMap();
+      if (headerRowsContainer) {
+        headerRowsContainer.querySelectorAll('.param-row').forEach(row => updateRowVariableHighlight(row, varMap));
+      }
+      if (varRowsContainer) {
+        varRowsContainer.querySelectorAll('.param-row').forEach(row => updateRowVariableHighlight(row, varMap));
+      }
+    }
+
+    function refreshAuthVariableHighlights() {
+      const authContainer = document.getElementById('tab-auth');
+      if (!authContainer) return;
+      const varMap = getActiveVariableMap();
+
+      authContainer.querySelectorAll('input[type="text"], input[type="password"]').forEach(input => {
+        const val = input.value;
+        const analysis = analyzeVariables(val, varMap);
+        let status = input.parentElement ? input.parentElement.querySelector('.auth-var-status') : null;
+
+        if (analysis.hasVariables) {
+          if (!status && input.parentElement) {
+            status = document.createElement('div');
+            status.className = 'auth-var-status';
+            input.parentElement.appendChild(status);
+          }
+          if (status) {
+            if (analysis.hasUnresolved) {
+              input.classList.add('has-unresolved-vars');
+              input.classList.remove('has-resolved-vars');
+              status.className = 'auth-var-status unresolved';
+              const missing = analysis.tokens.filter(t => !t.isResolved).map(t => '<code>{{' + safeEscape(t.key) + '}}</code>').join(', ');
+              status.innerHTML = '⚠ Unresolved variable: ' + missing + ' not defined in active scope';
+              status.style.display = 'block';
+            } else {
+              input.classList.add('has-resolved-vars');
+              input.classList.remove('has-unresolved-vars');
+              status.className = 'auth-var-status resolved';
+              const resolvedInfo = analysis.tokens.map(t => '<code>{{' + safeEscape(t.key) + '}}</code> → &quot;' + safeEscape(t.value) + '&quot; (' + safeEscape(t.source) + ')').join(', ');
+              status.innerHTML = '✓ Resolved: ' + resolvedInfo;
+              status.style.display = 'block';
+            }
+          }
+        } else {
+          input.classList.remove('has-unresolved-vars', 'has-resolved-vars');
+          if (status) status.style.display = 'none';
+        }
+      });
+    }
+
+    function refreshBodyVariableHighlights() {
+      const varMap = getActiveVariableMap();
+      const bodyInfo = getBodyPayload();
+      const bodyText = typeof bodyInfo.body === 'string' ? bodyInfo.body : '';
+      const analysis = analyzeVariables(bodyText, varMap);
+
+      const activeSubview = document.querySelector('.body-subview[style*="display: block"], .body-subview[style*="display: flex"]');
+      if (!activeSubview || activeSubview.id === 'body-view-none') return;
+      const header = activeSubview.querySelector('.body-subview-header');
+      if (!header) return;
+
+      let indicator = header.querySelector('.body-var-indicator');
+      if (analysis.hasVariables) {
+        if (!indicator) {
+          indicator = document.createElement('span');
+          header.appendChild(indicator);
+        }
+        indicator.style.display = 'inline-flex';
+        if (analysis.hasUnresolved) {
+          indicator.className = 'body-var-indicator has-unresolved';
+          indicator.textContent = '⚠ ' + analysis.unresolvedCount + ' Unresolved in Body';
+          indicator.title = 'Unresolved:\\n' + analysis.tokens.filter(t => !t.isResolved).map(t => '{{' + t.key + '}}').join('\\n');
+        } else {
+          indicator.className = 'body-var-indicator all-resolved';
+          indicator.textContent = '✓ ' + analysis.resolvedCount + ' Variables Resolved';
+          indicator.title = 'Resolved:\\n' + analysis.tokens.map(t => '{{' + t.key + '}} = "' + t.value + '" (' + t.source + ')').join('\\n');
+        }
+      } else if (indicator) {
+        indicator.style.display = 'none';
+      }
+    }
+
+    function refreshAllVariableHighlights() {
+      updateUrlPreview();
+      refreshTableVariableHighlights();
+      refreshAuthVariableHighlights();
+      refreshBodyVariableHighlights();
     }
 
     // Helper functions for reading request state
@@ -1555,16 +2553,18 @@ export function getRequestPanelHtml(
       if (isOverridden) {
         const overPill = document.createElement('span');
         overPill.className = 'overridden-pill';
-        overPill.textContent = 'Overridden';
+        const isDis = item.sourceName && item.sourceName.includes('(Disabled)');
+        overPill.textContent = isDis ? 'Disabled' : 'Overridden';
+        overPill.title = isDis ? 'This variable is disabled at the collection or environment level' : 'This variable is shadowed by a more specific scope';
         badgeContainer.appendChild(overPill);
       }
 
       const actionDiv = document.createElement('div');
-      if (onOverride && !isOverridden) {
+      if (onOverride) {
         const overrideBtn = document.createElement('button');
         overrideBtn.className = 'btn btn-secondary override-btn';
         overrideBtn.textContent = '+ Override';
-        overrideBtn.title = 'Copy to request to override';
+        overrideBtn.title = 'Copy to request variables to enable/override';
         overrideBtn.addEventListener('click', onOverride);
         actionDiv.appendChild(overrideBtn);
       }
@@ -1736,12 +2736,17 @@ export function getRequestPanelHtml(
     function requestInheritedData() {
       const selectEnv = document.getElementById('select-env');
       const selectProfile = document.getElementById('select-profile');
+      const selectBaseUrlPref = document.getElementById('select-base-url-pref');
+      const rawBaseUrlPref = selectBaseUrlPref ? selectBaseUrlPref.value : undefined;
+      const baseUrlPreference = (rawBaseUrlPref === 'collection' || rawBaseUrlPref === 'environment' || rawBaseUrlPref === 'none') ? rawBaseUrlPref : undefined;
+
       vscode.postMessage({
         type: 'getInherited',
         payload: {
           profile: selectProfile ? selectProfile.value : undefined,
           profileId: selectProfile && selectProfile.selectedOptions[0] ? selectProfile.selectedOptions[0].dataset.id : undefined,
           environment: selectEnv ? selectEnv.value : undefined,
+          baseUrlPreference: baseUrlPreference,
           collection: activeCollection,
           folder: activeFolder,
           variables: getRequestVariables(),
@@ -1754,9 +2759,199 @@ export function getRequestPanelHtml(
     if (selectEnvEl) {
       selectEnvEl.addEventListener('change', () => requestInheritedData());
     }
+    function updateActiveProfileAccent() {
+      const selectProfileEl = document.getElementById('select-profile');
+      const dotEl = document.getElementById('profile-indicator-dot');
+      const guardBadge = document.getElementById('profile-guard-badge');
+      const methodSelect = document.getElementById('method-select');
+      if (selectProfileEl) {
+        const selOpt = selectProfileEl.options[selectProfileEl.selectedIndex];
+        const color = selOpt?.getAttribute('data-color') || '#3b82f6';
+        if (dotEl) {
+          dotEl.style.background = color;
+          dotEl.style.boxShadow = '0 0 6px ' + color + 'aa';
+        }
+        document.documentElement.style.setProperty('--primary', color);
+
+        if (guardBadge && selOpt) {
+          let guards = null;
+          try {
+            const rawGuards = selOpt.getAttribute('data-guards');
+            if (rawGuards) guards = JSON.parse(rawGuards);
+          } catch (_) {}
+
+          if (guards && guards.enabled) {
+            guardBadge.style.display = 'inline-flex';
+            const blocked = (guards.blockedMethods || []).map(m => m.toUpperCase());
+            const curMethod = methodSelect ? methodSelect.value.toUpperCase() : '';
+            if (blocked.includes(curMethod)) {
+              guardBadge.textContent = '⛔ ' + curMethod + ' Blocked';
+              guardBadge.style.color = '#ef4444';
+              guardBadge.style.background = 'rgba(239, 68, 68, 0.15)';
+              guardBadge.style.borderColor = 'rgba(239, 68, 68, 0.35)';
+              guardBadge.title = 'Profile "' + selOpt.value + '" has Safety Guards active: ' + curMethod + ' requests are guarded/blocked.';
+            } else {
+              guardBadge.textContent = '🛡️ Guarded';
+              guardBadge.style.color = '#f59e0b';
+              guardBadge.style.background = 'rgba(245, 158, 11, 0.15)';
+              guardBadge.style.borderColor = 'rgba(245, 158, 11, 0.35)';
+              guardBadge.title = 'Profile "' + selOpt.value + '" has Safety Guards active. Blocked methods: ' + (blocked.join(', ') || 'None');
+            }
+          } else {
+            guardBadge.style.display = 'none';
+          }
+        }
+      }
+    }
+
+    const methodSelectEl = document.getElementById('method-select');
+    if (methodSelectEl) {
+      methodSelectEl.addEventListener('change', () => updateActiveProfileAccent());
+    }
+
+    function renderEnvironmentSelectHtml(environments, activeProfileId, selectedValue) {
+      if (!environments || !Array.isArray(environments)) {
+        return '<option value="">No Environment (Collection Defaults)</option>';
+      }
+
+      // Filter by profile scope (matching sidebar behavior)
+      const isFiltered = Boolean(activeProfileId && activeProfileId !== 'all');
+      const filteredEnvs = environments.filter(function(e) {
+        if (!isFiltered) return true;
+        if (activeProfileId === 'global') return !e.profileId || e.profileId === 'global';
+        return e.profileId === activeProfileId || !e.profileId || e.profileId === 'global';
+      });
+
+      // Split into Profile-Scoped and Shared/Global if a profile is active
+      const profileEnvs = [];
+      const sharedEnvs = [];
+      const hasSplit = isFiltered && activeProfileId !== 'global';
+
+      filteredEnvs.forEach(function(e) {
+        if (hasSplit && e.profileId === activeProfileId) {
+          profileEnvs.push(e);
+        } else {
+          sharedEnvs.push(e);
+        }
+      });
+
+      function buildGroupOptions(envsList) {
+        if (!envsList.length) return '';
+        const byId = {};
+        const byName = {};
+        envsList.forEach(function(e) {
+          if (e.id) byId[e.id] = e;
+          byName[e.name] = e;
+        });
+
+        const childrenMap = {};
+        const roots = [];
+        envsList.forEach(function(e) {
+          const parentRef = e.inheritsFrom;
+          const parentObj = parentRef ? (byId[parentRef] || byName[parentRef]) : null;
+          if (parentObj && parentObj.name !== e.name && envsList.some(function(el) { return el.name === parentObj.name; })) {
+            const pKey = parentObj.id || parentObj.name;
+            if (!childrenMap[pKey]) childrenMap[pKey] = [];
+            childrenMap[pKey].push(e);
+          } else {
+            roots.push(e);
+          }
+        });
+
+        const rendered = new Set();
+        const lines = [];
+
+        function renderNode(e, depth, visited) {
+          const key = e.id || e.name;
+          if (visited.has(key)) return;
+          visited.add(key);
+          rendered.add(e.name);
+
+          const rawChildren = childrenMap[key] || [];
+          const validChildren = rawChildren.filter(function(c) { return !visited.has(c.id || c.name); });
+          const hasChildren = validChildren.length > 0;
+          const parentObj = e.inheritsFrom ? (byId[e.inheritsFrom] || byName[e.inheritsFrom]) : null;
+          const pName = parentObj ? parentObj.name : e.inheritsFrom;
+
+          let label = '';
+          if (depth > 0) {
+            const indent = '\u00A0\u00A0'.repeat(depth) + '↳ ';
+            label = indent + e.name;
+            if (pName) label += ' (inherits: ' + pName + ')';
+            if (hasChildren) label += ' [Parent (' + validChildren.length + ')]';
+          } else {
+            label = e.name;
+            if (hasChildren) {
+              label += ' (Parent • ' + validChildren.length + (validChildren.length === 1 ? ' child' : ' children') + ')';
+            } else if (pName) {
+              label += ' (inherits: ' + pName + ')';
+            }
+          }
+
+          const isSel = Boolean(selectedValue) && e.name === selectedValue;
+          lines.push('<option value="' + safeEscape(e.name) + '"' + (isSel ? ' selected' : '') + '>' + safeEscape(label) + '</option>');
+
+          validChildren.forEach(function(child) {
+            renderNode(child, depth + 1, new Set(visited));
+          });
+        }
+
+        roots.forEach(function(root) {
+          renderNode(root, 0, new Set());
+        });
+        envsList.forEach(function(e) {
+          if (!rendered.has(e.name)) {
+            renderNode(e, 0, new Set());
+          }
+        });
+
+        return lines.join('');
+      }
+
+      let html = '<option value=""' + (!selectedValue ? ' selected' : '') + '>No Environment (Collection Defaults)</option>';
+      if (hasSplit && profileEnvs.length > 0 && sharedEnvs.length > 0) {
+        const selectProfileEl = document.getElementById('select-profile');
+        const profName = (selectProfileEl && selectProfileEl.options && selectProfileEl.selectedIndex >= 0 && selectProfileEl.options[selectProfileEl.selectedIndex])
+          ? (selectProfileEl.options[selectProfileEl.selectedIndex].text || 'Profile')
+          : 'Profile';
+        html += '<optgroup label="Profile Environments (' + safeEscape(profName) + ')">' + buildGroupOptions(profileEnvs) + '</optgroup>';
+        html += '<optgroup label="Shared / Global Environments">' + buildGroupOptions(sharedEnvs) + '</optgroup>';
+      } else {
+        html += buildGroupOptions(filteredEnvs);
+      }
+      return html;
+    }
+
+    function updateEnvironmentDropdown(preferredValue) {
+      const selectEnv = document.getElementById('select-env');
+      const selectProfile = document.getElementById('select-profile');
+      if (!selectEnv) return;
+      const targetVal = preferredValue !== undefined ? preferredValue : selectEnv.value;
+      const selectedOption = selectProfile ? selectProfile.options[selectProfile.selectedIndex] : null;
+      const activePid = selectedOption ? (selectedOption.getAttribute('data-id') || selectedOption.value) : undefined;
+      selectEnv.innerHTML = renderEnvironmentSelectHtml(currentEnvironments, activePid, targetVal);
+      if (selectEnv.value !== targetVal) {
+        selectEnv.value = targetVal || '';
+      }
+    }
+
     const selectProfileEl = document.getElementById('select-profile');
     if (selectProfileEl) {
-      selectProfileEl.addEventListener('change', () => requestInheritedData());
+      selectProfileEl.addEventListener('change', () => {
+        updateActiveProfileAccent();
+        updateEnvironmentDropdown();
+        requestInheritedData();
+      });
+    }
+    const selectBaseUrlPrefEl = document.getElementById('select-base-url-pref');
+    if (selectBaseUrlPrefEl) {
+      selectBaseUrlPrefEl.addEventListener('change', () => requestInheritedData());
+    }
+    const btnOpenSettingsEl = document.getElementById('btn-open-settings');
+    if (btnOpenSettingsEl) {
+      btnOpenSettingsEl.addEventListener('click', () => {
+        vscode.postMessage({ type: 'openSettings' });
+      });
     }
 
     // Wire Request Name inline renaming
@@ -1816,10 +3011,14 @@ export function getRequestPanelHtml(
       });
     }
 
-    // Wire URL input → live preview
+    // Wire URL input → live preview & backdrop scroll
     const urlInputEl = document.getElementById('url-input');
     if (urlInputEl) {
       urlInputEl.addEventListener('input', () => updateUrlPreview());
+      urlInputEl.addEventListener('scroll', () => {
+        const backdrop = document.getElementById('url-highlight-backdrop');
+        if (backdrop) backdrop.scrollLeft = urlInputEl.scrollLeft;
+      });
     }
 
     // Variables UI Builder
@@ -1830,9 +3029,11 @@ export function getRequestPanelHtml(
         <input type="checkbox" \${enabled ? 'checked' : ''} data-role="enabled" style="cursor: pointer;" />
         <input class="param-input" type="text" placeholder="Key" value="\${String(name).replace(/"/g, '&quot;')}" data-role="name" />
         <input class="param-input" type="\${hidden ? 'password' : 'text'}" placeholder="Value" value="\${String(value).replace(/"/g, '&quot;')}" data-role="value" />
-        <label style="font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 4px; cursor: pointer;">
-          <input type="checkbox" \${hidden ? 'checked' : ''} data-role="hidden" /> Mask
-        </label>
+        <div class="row-var-slot" style="display: flex; align-items: center; gap: 4px; overflow: hidden;">
+          <label style="font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 4px; cursor: pointer; flex-shrink: 0;">
+            <input type="checkbox" \${hidden ? 'checked' : ''} data-role="hidden" /> Mask
+          </label>
+        </div>
         <button class="icon-btn" title="Delete" data-role="delete">✕</button>
       \`;
 
@@ -1845,17 +3046,24 @@ export function getRequestPanelHtml(
       row.querySelector('[data-role="delete"]').addEventListener('click', () => {
         row.remove();
         renderInheritedVars();
-        updateUrlPreview();
+        refreshAllVariableHighlights();
       });
 
       row.querySelectorAll('input').forEach(input => {
-        input.addEventListener('input', () => { renderInheritedVars(); updateUrlPreview(); });
-        input.addEventListener('change', () => { renderInheritedVars(); updateUrlPreview(); });
+        input.addEventListener('input', () => {
+          renderInheritedVars();
+          refreshAllVariableHighlights();
+        });
+        input.addEventListener('change', () => {
+          renderInheritedVars();
+          refreshAllVariableHighlights();
+        });
       });
 
       if (varRowsContainer) {
         varRowsContainer.appendChild(row);
       }
+      updateRowVariableHighlight(row);
       renderInheritedVars();
       return row;
     }
@@ -1880,23 +3088,31 @@ export function getRequestPanelHtml(
         <input type="checkbox" \${enabled ? 'checked' : ''} data-role="enabled" style="cursor: pointer;" />
         <input class="param-input" type="text" placeholder="Header name" value="\${String(key).replace(/"/g, '&quot;')}" data-role="key" />
         <input class="param-input" type="text" placeholder="Value" value="\${String(value).replace(/"/g, '&quot;')}" data-role="value" />
-        <div></div>
+        <div class="row-var-slot" style="display: flex; align-items: center; overflow: hidden;"></div>
         <button class="icon-btn" title="Delete" data-role="delete">✕</button>
       \`;
 
       row.querySelector('[data-role="delete"]').addEventListener('click', () => {
         row.remove();
         renderInheritedHeaders();
+        refreshAllVariableHighlights();
       });
 
       row.querySelectorAll('input').forEach(input => {
-        input.addEventListener('input', () => renderInheritedHeaders());
-        input.addEventListener('change', () => renderInheritedHeaders());
+        input.addEventListener('input', () => {
+          renderInheritedHeaders();
+          refreshAllVariableHighlights();
+        });
+        input.addEventListener('change', () => {
+          renderInheritedHeaders();
+          refreshAllVariableHighlights();
+        });
       });
 
       if (headerRowsContainer) {
         headerRowsContainer.appendChild(row);
       }
+      updateRowVariableHighlight(row);
       renderInheritedHeaders();
       return row;
     }
@@ -1914,10 +3130,26 @@ export function getRequestPanelHtml(
       addHeaderRow('Accept', 'application/json', true);
     }
 
-    // Initial render of inherited tables and URL preview
+    // Wire Auth and Body Variable Highlighting
+    const tabAuthEl = document.getElementById('tab-auth');
+    if (tabAuthEl) {
+      tabAuthEl.querySelectorAll('input, select, textarea').forEach(inp => {
+        inp.addEventListener('input', () => refreshAuthVariableHighlights());
+        inp.addEventListener('change', () => refreshAuthVariableHighlights());
+      });
+    }
+
+    ['req-body-json', 'req-body-text', 'req-body-xml', 'req-body-raw', 'req-body-urlencoded-bulk'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.addEventListener('input', () => refreshBodyVariableHighlights());
+      }
+    });
+
+    // Initial render of inherited tables, URL preview, and variable highlights
     renderInheritedVars();
     renderInheritedHeaders();
-    updateUrlPreview();
+    refreshAllVariableHighlights();
 
     // Form row builder for form-urlencoded
     function addFormRow(container, key = '', value = '', enabled = true) {
@@ -2039,10 +3271,14 @@ export function getRequestPanelHtml(
         pill.classList.toggle('selected', isMatch);
       });
       Object.entries(bodyViews).forEach(([key, el]) => {
-        if (el) el.style.display = key === type ? (key === 'none' ? 'flex' : 'block') : 'none';
+        if (el) el.style.display = key === type ? 'flex' : 'none';
       });
       if (updateHeaders) {
         syncContentType(type);
+      }
+      refreshBodyVariableHighlights();
+      if (type === 'json') {
+        updateJsonHighlight();
       }
     }
 
@@ -2096,16 +3332,163 @@ export function getRequestPanelHtml(
       }
     });
 
-    // JSON beautify helper
-    document.getElementById('btn-fmt-json').addEventListener('click', () => {
-      const textarea = document.getElementById('req-body-json');
-      try {
-        const parsed = JSON.parse(textarea.value);
-        textarea.value = JSON.stringify(parsed, null, 2);
-      } catch (err) {
-        // Not valid JSON
+    // Live JSON Syntax Highlighting & Line Numbers Editor
+    const jsonTextarea = document.getElementById('req-body-json');
+    const jsonBackdrop = document.getElementById('json-highlight-backdrop');
+    const jsonHighlightCode = document.getElementById('json-highlight-code');
+    const jsonGutter = document.getElementById('json-line-numbers');
+    const jsonSyntaxIndicator = document.getElementById('json-syntax-indicator');
+
+    function highlightJsonForEditor(rawText) {
+      if (!rawText) return '';
+      const escaped = rawText
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+
+      const JSON_TOKEN_RE = /("(?:[^"\\\\]|\\\\.)*"\\s*:?)|(\\b(?:true|false)\\b)|(\\bnull\\b)|(-?\\d+(?:\\.\\d+)?(?:[eE][+\\-]?\\d+)?)|(\\{\\{[^}]+\\}\\})|([{}[\\],:])/g;
+
+      return escaped.replace(JSON_TOKEN_RE, function (match, keyOrString, boolMatch, nullMatch, numMatch, varMatch, punctMatch) {
+        if (keyOrString) {
+          if (/:\\s*$/.test(keyOrString)) {
+            const colonIdx = keyOrString.lastIndexOf(':');
+            const keyPart = keyOrString.slice(0, colonIdx);
+            const colonPart = keyOrString.slice(colonIdx);
+            return '<span class="json-key">' + keyPart + '</span><span class="json-punct">' + colonPart + '</span>';
+          } else {
+            const withVars = keyOrString.replace(/\\{\\{([^}]+)\\}\\}/g, '<span class="json-variable">{{\$1}}</span>');
+            return '<span class="json-string">' + withVars + '</span>';
+          }
+        } else if (boolMatch) {
+          return '<span class="json-boolean">' + boolMatch + '</span>';
+        } else if (nullMatch) {
+          return '<span class="json-null">' + nullMatch + '</span>';
+        } else if (numMatch) {
+          return '<span class="json-number">' + numMatch + '</span>';
+        } else if (varMatch) {
+          return '<span class="json-variable">' + varMatch + '</span>';
+        } else if (punctMatch) {
+          return '<span class="json-punct">' + punctMatch + '</span>';
+        }
+        return match;
+      });
+    }
+
+    function updateJsonHighlight() {
+      if (!jsonTextarea || !jsonHighlightCode || !jsonGutter) return;
+      const text = jsonTextarea.value || '';
+      jsonHighlightCode.innerHTML = highlightJsonForEditor(text) + (text.endsWith('\\n') ? ' ' : '');
+
+      const lineCount = text.split('\\n').length;
+      let gutterText = '';
+      for (let i = 1; i <= lineCount; i++) {
+        gutterText += i + '\\n';
       }
-    });
+      jsonGutter.textContent = gutterText;
+
+      if (jsonBackdrop) {
+        jsonBackdrop.scrollTop = jsonTextarea.scrollTop;
+        jsonBackdrop.scrollLeft = jsonTextarea.scrollLeft;
+      }
+      jsonGutter.scrollTop = jsonTextarea.scrollTop;
+
+      if (jsonSyntaxIndicator) {
+        const trimmed = text.trim();
+        if (!trimmed) {
+          jsonSyntaxIndicator.textContent = '';
+        } else {
+          let isValid = false;
+          try {
+            JSON.parse(text);
+            isValid = true;
+          } catch (e1) {
+            try {
+              const mock = text.replace(/\\{\\{[^}]+\\}\\}/g, '0');
+              JSON.parse(mock);
+              isValid = true;
+            } catch (e2) {}
+          }
+          if (isValid) {
+            jsonSyntaxIndicator.textContent = '● Valid JSON';
+            jsonSyntaxIndicator.style.color = '#4ec9b0';
+          } else {
+            jsonSyntaxIndicator.textContent = '● Invalid JSON';
+            jsonSyntaxIndicator.style.color = '#f14c4c';
+          }
+        }
+      }
+    }
+
+    if (jsonTextarea) {
+      jsonTextarea.addEventListener('input', () => {
+        updateJsonHighlight();
+        if (typeof recordUndoSnapshot === 'function') recordUndoSnapshot();
+      });
+
+      jsonTextarea.addEventListener('scroll', () => {
+        if (jsonBackdrop) {
+          jsonBackdrop.scrollTop = jsonTextarea.scrollTop;
+          jsonBackdrop.scrollLeft = jsonTextarea.scrollLeft;
+        }
+        if (jsonGutter) {
+          jsonGutter.scrollTop = jsonTextarea.scrollTop;
+        }
+      });
+
+      jsonTextarea.addEventListener('keydown', (e) => {
+        if (e.key === 'Tab') {
+          e.preventDefault();
+          const start = jsonTextarea.selectionStart;
+          const end = jsonTextarea.selectionEnd;
+          const val = jsonTextarea.value;
+          if (e.shiftKey) {
+            const lineStart = val.lastIndexOf('\\n', start - 1) + 1;
+            if (val.slice(lineStart, lineStart + 2) === '  ') {
+              jsonTextarea.value = val.slice(0, lineStart) + val.slice(lineStart + 2);
+              jsonTextarea.selectionStart = Math.max(lineStart, start - 2);
+              jsonTextarea.selectionEnd = Math.max(lineStart, end - 2);
+            }
+          } else {
+            jsonTextarea.value = val.substring(0, start) + '  ' + val.substring(end);
+            jsonTextarea.selectionStart = jsonTextarea.selectionEnd = start + 2;
+          }
+          updateJsonHighlight();
+          if (typeof recordUndoSnapshot === 'function') recordUndoSnapshot();
+        }
+      });
+    }
+
+    // JSON beautify helper
+    const btnFmtJson = document.getElementById('btn-fmt-json');
+    if (btnFmtJson) {
+      btnFmtJson.addEventListener('click', () => {
+        const textarea = document.getElementById('req-body-json');
+        if (!textarea) return;
+        try {
+          const parsed = JSON.parse(textarea.value);
+          textarea.value = JSON.stringify(parsed, null, 2);
+          updateJsonHighlight();
+          if (typeof recordUndoSnapshot === 'function') recordUndoSnapshot(true);
+        } catch (err) {
+          // Not valid JSON
+        }
+      });
+    }
+
+    const btnEditBodyJson = document.getElementById('btn-edit-body-json');
+    if (btnEditBodyJson) {
+      btnEditBodyJson.addEventListener('click', () => {
+        const textarea = document.getElementById('req-body-json');
+        if (textarea) {
+          vscode.postMessage({
+            type: 'openInEditor',
+            target: 'requestBody',
+            content: textarea.value || '{\\n  \\n}',
+            language: 'json'
+          });
+        }
+      });
+    }
 
     // XML beautify helper
     document.getElementById('btn-fmt-xml').addEventListener('click', () => {
@@ -2138,7 +3521,8 @@ export function getRequestPanelHtml(
         else if (ctVal.includes('text/plain')) type = 'text';
         else if (ctVal.includes('application/json')) type = 'json';
         else if (initialBody) {
-          const trimmed = initialBody.trim();
+          const bodyStr = typeof initialBody === 'string' ? initialBody : JSON.stringify(initialBody);
+          const trimmed = bodyStr.trim();
           if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
             type = 'json';
           } else if (trimmed.startsWith('<') && trimmed.endsWith('>')) {
@@ -2191,6 +3575,7 @@ export function getRequestPanelHtml(
     }
 
     initBodyContent();
+    updateJsonHighlight();
 
     // Helper to get body payload
     function getBodyPayload() {
@@ -2273,6 +3658,9 @@ export function getRequestPanelHtml(
       const profileSelect = document.getElementById('select-profile');
       const selectedOption = profileSelect ? profileSelect.options[profileSelect.selectedIndex] : null;
       const profileId = selectedOption ? selectedOption.getAttribute('data-id') : undefined;
+      const selectBaseUrlPref = document.getElementById('select-base-url-pref');
+      const rawBaseUrlPref = selectBaseUrlPref ? selectBaseUrlPref.value : undefined;
+      const baseUrlPreference = (rawBaseUrlPref === 'collection' || rawBaseUrlPref === 'environment' || rawBaseUrlPref === 'none') ? rawBaseUrlPref : undefined;
       const bodyInfo = getBodyPayload();
 
       return {
@@ -2283,6 +3671,7 @@ export function getRequestPanelHtml(
         profile: profileSelect ? profileSelect.value : '',
         profileId: profileId,
         environment: document.getElementById('select-env').value,
+        baseUrlPreference: baseUrlPreference,
         collection: activeCollection,
         folder: activeFolder,
         headers: getHeaders(),
@@ -2330,25 +3719,112 @@ export function getRequestPanelHtml(
       });
     });
 
-    // Copy Response
-    document.getElementById('btn-copy-resp').addEventListener('click', () => {
-      const headersTab = document.getElementById('tab-resp-headers');
-      let text = '';
-      if (headersTab && headersTab.classList.contains('active')) {
-        const rows = Array.from(headersTab.querySelectorAll('tbody tr'));
-        text = rows.map(r => {
-          const k = r.querySelector('.header-key');
-          const v = r.querySelector('.header-val');
-          return (k && v) ? (k.textContent + ': ' + v.textContent) : r.textContent;
-        }).join('\\n');
-      } else {
-        text = document.getElementById('resp-body-text').textContent;
+    // Response Body Syntax Highlighting & Formatting
+    let lastResponseBodyRaw = '';
+    let isFormattedView = true;
+
+    function highlightJson(jsonStr) {
+      if (!jsonStr || typeof jsonStr !== 'string') return '';
+      const escaped = jsonStr
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+
+      const JSON_TOKEN_RE = /("(?:[^"\\\\]|\\\\.)*"\\s*:?)|(\\b(?:true|false)\\b)|(\\bnull\\b)|(-?\\d+(?:\\.\\d+)?(?:[eE][+\\-]?\\d+)?)/g;
+      return escaped.replace(JSON_TOKEN_RE, function (match, keyOrString, boolMatch, nullMatch, numMatch) {
+        if (keyOrString) {
+          if (/:\\s*$/.test(keyOrString)) {
+            const colonIdx = keyOrString.lastIndexOf(':');
+            const keyPart = keyOrString.slice(0, colonIdx);
+            const colonPart = keyOrString.slice(colonIdx);
+            return '<span class="json-key">' + keyPart + '</span>' + colonPart;
+          } else {
+            return '<span class="json-string">' + keyOrString + '</span>';
+          }
+        } else if (boolMatch) {
+          return '<span class="json-boolean">' + boolMatch + '</span>';
+        } else if (nullMatch) {
+          return '<span class="json-null">' + nullMatch + '</span>';
+        } else if (numMatch) {
+          return '<span class="json-number">' + numMatch + '</span>';
+        }
+        return match;
+      });
+    }
+
+    function renderResponseBody(bodyText) {
+      const bodyPre = document.getElementById('resp-body-text');
+      if (!bodyPre) return;
+      lastResponseBodyRaw = bodyText || '';
+
+      if (!bodyText) {
+        bodyPre.innerHTML = '<span style="color: var(--muted); font-style: italic;">(Empty response)</span>';
+        return;
       }
-      navigator.clipboard.writeText(text);
-      const copyBtn = document.getElementById('btn-copy-resp');
-      copyBtn.textContent = 'Copied!';
-      setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
-    });
+
+      let parsed = null;
+      try {
+        parsed = JSON.parse(bodyText);
+      } catch (e) {}
+
+      if (parsed !== null && isFormattedView) {
+        const formatted = JSON.stringify(parsed, null, 2);
+        bodyPre.innerHTML = highlightJson(formatted);
+      } else {
+        bodyPre.textContent = bodyText;
+      }
+    }
+
+    // Toggle Formatted / Raw view
+    const btnFormatResp = document.getElementById('btn-format-resp');
+    if (btnFormatResp) {
+      btnFormatResp.addEventListener('click', () => {
+        isFormattedView = !isFormattedView;
+        btnFormatResp.textContent = isFormattedView ? 'Raw' : 'Format';
+        btnFormatResp.title = isFormattedView ? 'Switch to Raw view' : 'Format and colorize JSON';
+        renderResponseBody(lastResponseBodyRaw);
+      });
+    }
+
+    // Open Response in VS Code Editor (Monaco)
+    const btnOpenEditor = document.getElementById('btn-open-editor');
+    if (btnOpenEditor) {
+      btnOpenEditor.addEventListener('click', () => {
+        if (!lastResponseBodyRaw) return;
+        vscode.postMessage({
+          type: 'openInEditor',
+          content: lastResponseBodyRaw,
+          language: 'json'
+        });
+      });
+    }
+
+    // Copy Response
+    const btnCopyResp = document.getElementById('btn-copy-resp');
+    if (btnCopyResp) {
+      btnCopyResp.addEventListener('click', () => {
+        let text = '';
+        const headersTab = document.getElementById('tab-resp-headers');
+        if (headersTab && headersTab.classList.contains('active')) {
+          const rows = Array.from(headersTab.querySelectorAll('tbody tr'));
+          text = rows.map(r => {
+            const k = r.querySelector('.header-key');
+            const v = r.querySelector('.header-val');
+            return (k && v) ? (k.textContent + ': ' + v.textContent) : r.textContent;
+          }).join('\\n');
+        } else {
+          text = lastResponseBodyRaw || document.getElementById('resp-body-text').textContent;
+          if (isFormattedView) {
+            try {
+              text = JSON.stringify(JSON.parse(text), null, 2);
+            } catch (e) {}
+          }
+        }
+        navigator.clipboard.writeText(text);
+        btnCopyResp.textContent = 'Copied!';
+        setTimeout(() => { btnCopyResp.textContent = 'Copy'; }, 1500);
+      });
+    }
 
     // Message listener from extension
     window.addEventListener('message', (event) => {
@@ -2367,7 +3843,7 @@ export function getRequestPanelHtml(
           statusPill.textContent = meta.statusText || 'Error';
           statusPill.className = 'pill status-err';
         } else {
-          statusPill.textContent = \`\${meta.status} \${meta.statusText}\`;
+          statusPill.textContent = meta.status + ' ' + meta.statusText;
           statusPill.className = 'pill';
           if (meta.status >= 200 && meta.status < 300) statusPill.classList.add('status-2xx');
           else if (meta.status >= 300 && meta.status < 400) statusPill.classList.add('status-3xx');
@@ -2375,12 +3851,12 @@ export function getRequestPanelHtml(
           else if (meta.status >= 500) statusPill.classList.add('status-5xx');
         }
 
-        timeTag.textContent = \`\${meta.elapsedMs} ms\`;
+        timeTag.textContent = meta.elapsedMs + ' ms';
         if (meta.status === 0) {
           sizeTag.textContent = '';
         } else if (meta.sizeBytes) {
           const sizeKb = (meta.sizeBytes / 1024).toFixed(1);
-          sizeTag.textContent = \`\${sizeKb} KB\`;
+          sizeTag.textContent = sizeKb + ' KB';
         }
 
         // Body rendering
@@ -2418,14 +3894,8 @@ export function getRequestPanelHtml(
           bodyPre.style.padding = '0';
         } else {
           // Normal response
-          bodyPre.innerHTML = '';
           bodyPre.style.padding = '12px';
-          try {
-            const json = JSON.parse(meta.body);
-            bodyPre.textContent = JSON.stringify(json, null, 2);
-          } catch {
-            bodyPre.textContent = meta.body || '(Empty response)';
-          }
+          renderResponseBody(meta.body || '');
         }
 
         // Response headers
@@ -2569,26 +4039,68 @@ export function getRequestPanelHtml(
         }
       }
 
+      if (msg.type === 'setRequestBody' && typeof msg.body === 'string') {
+        const textarea = document.getElementById('req-body-json');
+        if (textarea) {
+          textarea.value = msg.body;
+          updateJsonHighlight();
+        }
+      }
+
       if (msg.type === 'updateInherited') {
         currentInheritedVars = msg.inheritedVars || [];
         currentInheritedHeaders = msg.inheritedHeaders || [];
+        if (msg.resolvedVars) {
+          currentResolvedVars = msg.resolvedVars;
+        }
         renderInheritedVars();
         renderInheritedHeaders();
-        updateUrlPreview();
+        refreshAllVariableHighlights();
       }
 
       if (msg.type === 'preview') {
         const bodyPre = document.getElementById('resp-body-text');
-        bodyPre.textContent = JSON.stringify(msg.preview, null, 2);
+        if (bodyPre) bodyPre.style.padding = '12px';
+        renderResponseBody(JSON.stringify(msg.preview, null, 2));
         const statusPill = document.getElementById('resp-status');
-        statusPill.textContent = 'Preview';
-        statusPill.className = 'pill status-3xx';
+        if (statusPill) {
+          statusPill.textContent = 'Preview';
+          statusPill.className = 'pill status-3xx';
+        }
+        if (msg.preview && msg.preview.availableVariables) {
+          currentResolvedVars = msg.preview.availableVariables;
+          refreshAllVariableHighlights();
+        }
       }
 
-      if (msg.type === 'activeEnvironmentChanged' && msg.envName) {
+      if (msg.type === 'stateUpdated') {
+        if (msg.environments && Array.isArray(msg.environments)) {
+          currentEnvironments = msg.environments;
+        }
+        if (msg.profiles && Array.isArray(msg.profiles)) {
+          const selectProfile = document.getElementById('select-profile');
+          if (selectProfile) {
+            const currentSelected = selectProfile.value;
+            selectProfile.innerHTML = msg.profiles.map(function(p) {
+              const guardsAttr = p.guards ? JSON.stringify(p.guards).replace(/"/g, '&quot;') : '';
+              return '<option value="' + p.name.replace(/"/g, '&quot;') + '" data-id="' + p.id.replace(/"/g, '&quot;') + '" data-color="' + (p.color || '#3b82f6').replace(/"/g, '&quot;') + '" data-guards="' + guardsAttr + '">' + p.name + '</option>';
+            }).join('');
+            if (msg.profiles.some(function(p) { return p.name === currentSelected; })) {
+              selectProfile.value = currentSelected;
+            }
+            updateActiveProfileAccent();
+          }
+        }
+        const selectEnv = document.getElementById('select-env');
+        const currentEnvVal = selectEnv ? selectEnv.value : '';
+        updateEnvironmentDropdown(currentEnvVal);
+        requestInheritedData();
+      }
+
+      if (msg.type === 'activeEnvironmentChanged') {
         const selectEnv = document.getElementById('select-env');
         if (selectEnv) {
-          selectEnv.value = msg.envName;
+          selectEnv.value = msg.envName || '';
           requestInheritedData();
         }
       }
@@ -2603,8 +4115,257 @@ export function getRequestPanelHtml(
               break;
             }
           }
+          updateActiveProfileAccent();
+          updateEnvironmentDropdown();
           requestInheritedData();
         }
+      }
+    });
+
+    // ==========================================
+    // Comprehensive Undo / Redo Manager (Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z)
+    // ==========================================
+    const undoStack = [];
+    const redoStack = [];
+    let isUndoingOrRedoing = false;
+    let lastRecordedSnapshot = null;
+    let recordTimer = null;
+
+    function captureCurrentState() {
+      try {
+        return JSON.stringify({
+          method: document.getElementById('method-select')?.value,
+          url: document.getElementById('url-input')?.value,
+          headers: getHeaders(),
+          variables: getVariables(),
+          bodyInfo: getBodyPayload(),
+          notes: document.getElementById('req-notes')?.value,
+          preScript: document.getElementById('req-pre-script')?.value,
+          postScript: document.getElementById('req-post-script')?.value,
+          activeTab: document.querySelector('.tab-btn.active')?.getAttribute('data-tab'),
+          activeBodyType: document.querySelector('input[name="bodyType"]:checked')?.value,
+          focusedId: document.activeElement ? document.activeElement.id : null,
+          selStart: document.activeElement && 'selectionStart' in document.activeElement ? document.activeElement.selectionStart : null,
+          selEnd: document.activeElement && 'selectionEnd' in document.activeElement ? document.activeElement.selectionEnd : null,
+        });
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function recordUndoSnapshot(immediate = false) {
+      if (isUndoingOrRedoing) return;
+      if (immediate) {
+        if (recordTimer) clearTimeout(recordTimer);
+        const current = captureCurrentState();
+        if (current && current !== lastRecordedSnapshot) {
+          if (lastRecordedSnapshot !== null) {
+            undoStack.push(lastRecordedSnapshot);
+            if (undoStack.length > 60) undoStack.shift();
+            redoStack.length = 0;
+          }
+          lastRecordedSnapshot = current;
+        }
+        return;
+      }
+
+      if (recordTimer) clearTimeout(recordTimer);
+      recordTimer = setTimeout(() => {
+        const current = captureCurrentState();
+        if (current && current !== lastRecordedSnapshot) {
+          if (lastRecordedSnapshot !== null) {
+            undoStack.push(lastRecordedSnapshot);
+            if (undoStack.length > 60) undoStack.shift();
+            redoStack.length = 0;
+          }
+          lastRecordedSnapshot = current;
+        }
+      }, 300);
+    }
+
+    function restoreSnapshot(serialized) {
+      if (!serialized) return;
+      isUndoingOrRedoing = true;
+      try {
+        const state = JSON.parse(serialized);
+        lastRecordedSnapshot = serialized;
+
+        if (state.method) {
+          const m = document.getElementById('method-select');
+          if (m) m.value = state.method;
+        }
+        if (state.url !== undefined) {
+          const u = document.getElementById('url-input');
+          if (u) u.value = state.url;
+        }
+        if (state.notes !== undefined) {
+          const n = document.getElementById('req-notes');
+          if (n) n.value = state.notes;
+        }
+        if (state.preScript !== undefined) {
+          const ps = document.getElementById('req-pre-script');
+          if (ps) ps.value = state.preScript;
+        }
+        if (state.postScript !== undefined) {
+          const pos = document.getElementById('req-post-script');
+          if (pos) pos.value = state.postScript;
+        }
+
+        // Headers
+        if (state.headers && headerRowsContainer) {
+          headerRowsContainer.innerHTML = '';
+          const hEntries = Object.entries(state.headers);
+          if (hEntries.length > 0) {
+            hEntries.forEach(([k, v]) => addHeaderRow(k, v, true));
+          } else {
+            addHeaderRow('', '', true);
+          }
+        }
+
+        // Variables
+        if (state.variables && varRowsContainer) {
+          varRowsContainer.innerHTML = '';
+          if (state.variables.length > 0) {
+            state.variables.forEach(v => addVarRow(v.name, v.value, v.enabled !== false, v.hidden === true));
+          } else {
+            addVarRow();
+          }
+        }
+
+        // Body
+        if (state.bodyInfo) {
+          const bType = state.bodyInfo.bodyType || 'none';
+          selectBodyType(bType, false);
+          if (bType === 'json') {
+            const el = document.getElementById('req-body-json');
+            if (el) el.value = state.bodyInfo.body || '';
+          } else if (bType === 'text') {
+            const el = document.getElementById('req-body-text');
+            if (el) el.value = state.bodyInfo.body || '';
+          } else if (bType === 'xml') {
+            const el = document.getElementById('req-body-xml');
+            if (el) el.value = state.bodyInfo.body || '';
+          } else if (bType === 'raw') {
+            const el = document.getElementById('req-body-raw');
+            if (el) el.value = state.bodyInfo.body || '';
+          }
+        }
+
+        if (state.activeTab) {
+          const tabBtn = document.querySelector('.tab-btn[data-tab="' + state.activeTab + '"]');
+          if (tabBtn) tabBtn.click();
+        }
+
+        if (state.focusedId) {
+          const el = document.getElementById(state.focusedId);
+          if (el) {
+            el.focus();
+            if (state.selStart !== null && 'setSelectionRange' in el) {
+              el.setSelectionRange(state.selStart, state.selEnd || state.selStart);
+            }
+          }
+        }
+
+        updateUrlPreview();
+        renderInheritedVars();
+        renderInheritedHeaders();
+      } finally {
+        isUndoingOrRedoing = false;
+      }
+    }
+
+    function performUndo() {
+      if (undoStack.length === 0) return false;
+      recordUndoSnapshot(true);
+      const prev = undoStack.pop();
+      if (lastRecordedSnapshot) redoStack.push(lastRecordedSnapshot);
+      restoreSnapshot(prev);
+      return true;
+    }
+
+    function performRedo() {
+      if (redoStack.length === 0) return false;
+      const next = redoStack.pop();
+      if (lastRecordedSnapshot) undoStack.push(lastRecordedSnapshot);
+      restoreSnapshot(next);
+      return true;
+    }
+
+    // Initialize baseline snapshot
+    lastRecordedSnapshot = captureCurrentState();
+
+    // Listen globally for edits to schedule snapshots
+    document.addEventListener('input', () => {
+      if (!isUndoingOrRedoing) recordUndoSnapshot(false);
+    }, true);
+    document.addEventListener('change', () => {
+      if (!isUndoingOrRedoing) recordUndoSnapshot(false);
+    }, true);
+
+    // Intercept Ctrl+Z and Ctrl+Y in capture phase so VS Code cannot steal them
+    window.addEventListener('keydown', (e) => {
+      const isZ = e.key === 'z' || e.key === 'Z';
+      const isY = e.key === 'y' || e.key === 'Y';
+      if ((e.ctrlKey || e.metaKey) && (isZ || isY)) {
+        const isRedo = isY || (isZ && e.shiftKey);
+        const activeEl = document.activeElement;
+        const isTextInput = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA');
+
+        if (!isRedo) {
+          let handled = false;
+          if (isTextInput) {
+            const valBefore = activeEl.value;
+            try {
+              handled = document.execCommand('undo');
+            } catch (_) {}
+            if (handled && activeEl.value === valBefore) {
+              handled = false;
+            }
+          }
+          if (!handled) {
+            handled = performUndo();
+          }
+          if (handled) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
+        } else {
+          let handled = false;
+          if (isTextInput) {
+            const valBefore = activeEl.value;
+            try {
+              handled = document.execCommand('redo');
+            } catch (_) {}
+            if (handled && activeEl.value === valBefore) {
+              handled = false;
+            }
+          }
+          if (!handled) {
+            handled = performRedo();
+          }
+          if (handled) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
+        }
+      }
+    }, true);
+
+    // Support Tab indentation in code textareas
+    ['req-body-json', 'req-body-text', 'req-body-xml', 'req-body-raw', 'req-pre-script', 'req-post-script', 'req-notes'].forEach(id => {
+      const ta = document.getElementById(id);
+      if (ta) {
+        ta.addEventListener('keydown', (e) => {
+          if (e.key === 'Tab' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            e.preventDefault();
+            recordUndoSnapshot(true);
+            const start = ta.selectionStart;
+            const end = ta.selectionEnd;
+            ta.value = ta.value.substring(0, start) + '  ' + ta.value.substring(end);
+            ta.selectionStart = ta.selectionEnd = start + 2;
+            recordUndoSnapshot(false);
+          }
+        });
       }
     });
   </script>

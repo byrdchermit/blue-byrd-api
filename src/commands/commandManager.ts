@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { RequestContext, StoredToken } from '../types';
+import { DEFAULT_PROFILE_COLORS, RequestContext, StoredToken } from '../types';
 import { BlueByrdStateManager } from '../state/stateManager';
 import { HttpService } from '../services/httpService';
 import { VariableService } from '../services/variableService';
@@ -11,6 +11,7 @@ import { ImportExportService } from '../services/importExportService';
 import { UpdateService } from '../services/updateService';
 import { BlueByrdPanel } from '../views/panels/requestPanel';
 import { BlueByrdSettingsPanel } from '../views/panels/settingsPanel';
+import { BlueByrdGlobalSettingsPanel } from '../views/panels/globalSettingsPanel';
 import { BlueByrdHistoryPanel } from '../views/panels/historyPanel';
 import { BlueByrdTreeItem } from '../views/tree/treeItem';
 
@@ -49,12 +50,7 @@ export class CommandManager {
   }
 
   private regCmd(commandName: string, callback: (...args: any[]) => any): vscode.Disposable {
-    const d1 = vscode.commands.registerCommand(`byrdsnestApiClient.${commandName}`, callback);
-    const d2 = vscode.commands.registerCommand(`blueByrdApiClient.${commandName}`, callback);
-    return new vscode.Disposable(() => {
-      d1.dispose();
-      d2.dispose();
-    });
+    return vscode.commands.registerCommand(`byrdsnestApiClient.${commandName}`, callback);
   }
 
   public registerAll(): void {
@@ -192,6 +188,11 @@ export class CommandManager {
           profileId: '__create__',
         });
 
+        items.push({
+          label: '$(gear) Manage Profiles & Settings...',
+          profileId: '__manage__',
+        });
+
         const selected = await vscode.window.showQuickPick(items, {
           placeHolder: 'Select workspace profile scope',
         });
@@ -199,7 +200,12 @@ export class CommandManager {
         if (!selected) return;
 
         if (selected.profileId === '__create__') {
-          vscode.commands.executeCommand('blueByrdApiClient.createProfile');
+          vscode.commands.executeCommand('byrdsnestApiClient.createProfile');
+          return;
+        }
+
+        if (selected.profileId === '__manage__') {
+          vscode.commands.executeCommand('byrdsnestApiClient.openSettings');
           return;
         }
 
@@ -235,8 +241,36 @@ export class CommandManager {
           this.stateManager.setActiveProfileId(profile.id);
           BlueByrdPanel.broadcastActiveProfile(profile.id, profile.name);
           this.treeProvider.refresh();
-          vscode.window.showInformationMessage(`Active profile scope set to: ${profile.name}`);
+          vscode.window.showInformationMessage(`Active profile set to: ${profile.name}`);
+        } else if (profileId === 'global' || profileId === 'all' || profileName === 'Shared / Global') {
+          this.stateManager.setActiveProfileId(undefined);
+          BlueByrdPanel.broadcastActiveProfile('global', 'Shared / Global');
+          this.treeProvider.refresh();
+          vscode.window.showInformationMessage('Active profile set to: Shared / Global');
         }
+      })
+    );
+
+    // Open Settings & Profile Manager
+    s.push(
+      this.regCmd('openSettings', (arg?: any) => {
+        let initialTab = 'profiles';
+        let profileId: string | undefined;
+
+        if (typeof arg === 'string') {
+          initialTab = arg;
+        } else if (arg && typeof arg === 'object') {
+          if (arg.tab) initialTab = arg.tab;
+          profileId = arg.profileId || arg.id || arg.itemId;
+        }
+
+        BlueByrdGlobalSettingsPanel.createOrShow(
+          this.context.extensionUri,
+          this.stateManager,
+          this.tokenService,
+          initialTab,
+          profileId
+        );
       })
     );
 
@@ -322,7 +356,7 @@ export class CommandManager {
 
           if (selected.action === 'clearAll') {
             picker.hide();
-            await vscode.commands.executeCommand('blueByrdApiClient.clearProfileTokens', { id: profileId, name: profileName });
+            await vscode.commands.executeCommand('byrdsnestApiClient.clearProfileTokens', { id: profileId, name: profileName });
             return;
           }
 
@@ -494,6 +528,12 @@ export class CommandManager {
           }
         }
 
+        items.unshift({
+          label: '$(circle-slash) No Environment (Use Collection Defaults)',
+          description: 'Clear active environment and rely on collection variables',
+          envName: '',
+        });
+
         items.push({
           label: '$(add) Create New Environment...',
           envName: '__create__',
@@ -506,7 +546,15 @@ export class CommandManager {
         if (!selected) return;
 
         if (selected.envName === '__create__') {
-          vscode.commands.executeCommand('blueByrdApiClient.createEnvironment');
+          vscode.commands.executeCommand('byrdsnestApiClient.createEnvironment');
+          return;
+        }
+
+        if (selected.envName === '') {
+          this.stateManager.setActiveEnvironmentName(undefined);
+          BlueByrdPanel.broadcastActiveEnvironment('');
+          this.treeProvider.refresh();
+          vscode.window.showInformationMessage('Active environment cleared (using collection defaults).');
           return;
         }
 
@@ -516,6 +564,16 @@ export class CommandManager {
           this.treeProvider.refresh();
           vscode.window.showInformationMessage(`Active environment set to: ${selected.envName}`);
         }
+      })
+    );
+
+    // Clear Active Environment
+    s.push(
+      this.regCmd('clearActiveEnvironment', () => {
+        this.stateManager.setActiveEnvironmentName(undefined);
+        BlueByrdPanel.broadcastActiveEnvironment('');
+        this.treeProvider.refresh();
+        vscode.window.showInformationMessage('Active environment cleared (using collection defaults).');
       })
     );
 
@@ -533,6 +591,15 @@ export class CommandManager {
         }
 
         if (envName) {
+          const currentActive = this.stateManager.getState().activeEnvironmentName;
+          if (currentActive === envName) {
+            // Clicking already active environment toggles it off!
+            this.stateManager.setActiveEnvironmentName(undefined);
+            BlueByrdPanel.broadcastActiveEnvironment('');
+            this.treeProvider.refresh();
+            vscode.window.showInformationMessage('Active environment cleared (using collection defaults).');
+            return;
+          }
           this.stateManager.setActiveEnvironmentName(envName);
           BlueByrdPanel.broadcastActiveEnvironment(envName);
           this.treeProvider.refresh();
@@ -562,15 +629,22 @@ export class CommandManager {
             description: `Current: ${envLabel}`,
             action: 'environment',
           },
+          {
+            label: '$(gear) Manage Profiles & Settings...',
+            description: 'Open unified settings page',
+            action: 'settings',
+          },
         ], {
-          placeHolder: 'Select context to switch',
+          placeHolder: 'Select context or action',
         });
 
         if (!choice) return;
         if (choice.action === 'profile') {
-          vscode.commands.executeCommand('blueByrdApiClient.switchActiveProfile');
-        } else {
-          vscode.commands.executeCommand('blueByrdApiClient.switchActiveEnvironment');
+          vscode.commands.executeCommand('byrdsnestApiClient.switchActiveProfile');
+        } else if (choice.action === 'environment') {
+          vscode.commands.executeCommand('byrdsnestApiClient.switchActiveEnvironment');
+        } else if (choice.action === 'settings') {
+          vscode.commands.executeCommand('byrdsnestApiClient.openSettings');
         }
       })
     );
@@ -632,7 +706,16 @@ export class CommandManager {
           placeHolder: 'e.g. Staging Team',
         });
         if (name && name.trim()) {
-          const newProfile = this.stateManager.createProfile(name.trim());
+          const colorPick = await vscode.window.showQuickPick(
+            DEFAULT_PROFILE_COLORS.map(c => ({
+              label: c.name,
+              description: c.value,
+              color: c.value
+            })),
+            { placeHolder: 'Select a color theme for this profile (optional, defaults to Ocean Blue)' }
+          );
+          const chosenColor = colorPick?.color || '#3b82f6';
+          const newProfile = this.stateManager.createProfile(name.trim(), undefined, chosenColor);
           this.treeProvider.refresh();
           vscode.window.showInformationMessage(`Profile '${newProfile.name}' created.`);
           BlueByrdSettingsPanel.createOrShow(
@@ -714,7 +797,7 @@ export class CommandManager {
 
         const created = this.stateManager.createEnvironment(
           name.trim(),
-          parentEnv?.baseUrl || '',
+          '', // Leave empty so child dynamically inherits baseUrl from parent
           parentEnv?.profileId || this.stateManager.getActiveProfileId()
         );
         created.env.inheritsFrom = parentEnv?.id || parentId || parentName;

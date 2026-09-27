@@ -16,10 +16,20 @@ const mockVscode = {
   ThemeColor: class { constructor(id) { this.id = id; } },
   EventEmitter: class {
     constructor() {
-      this.event = () => {};
+      this.listeners = [];
+      this.event = (listener) => {
+        this.listeners.push(listener);
+        return { dispose: () => { this.listeners = this.listeners.filter(l => l !== listener); } };
+      };
     }
-    fire() {}
-    dispose() {}
+    fire(data) {
+      this.listeners.forEach(l => {
+        try { l(data); } catch (e) { /* ignore in mock */ }
+      });
+    }
+    dispose() {
+      this.listeners = [];
+    }
   },
   DataTransfer: class {
     constructor() {
@@ -52,6 +62,14 @@ const mockVscode = {
   commands: {
     registerCommand: () => ({ dispose: () => {} }),
     executeCommand: () => {},
+  },
+  workspace: {
+    workspaceFolders: [],
+  },
+  Uri: {
+    parse: (str) => ({ scheme: 'data', path: str, toString: () => str }),
+    file: (p) => ({ fsPath: p, path: p, toString: () => p }),
+    joinPath: (base, ...parts) => ({ fsPath: path.join(base.fsPath || base.path, ...parts), toString: () => path.join(base.fsPath || base.path, ...parts) })
   }
 };
 
@@ -80,6 +98,7 @@ const {
   BlueByrdToolsTreeProvider,
   BlueByrdTreeCoordinator,
 } = require(path.join(repoDist, 'views/tree'));
+const { getGlobalSettingsPanelHtml } = require(path.join(repoDist, 'views/panels/globalSettingsPanelHtml'));
 
 console.log('--- Starting bluebyrd Verification Suite ---');
 
@@ -1640,7 +1659,9 @@ console.log('✓ Request panel script integrity & syntax validation passed');
   assert(dndProvider.dropMimeTypes.includes('application/vnd.code.tree.bluebyrdcollections'), 'Must support bluebyrdcollections drop mime type');
 
   // Test handleDrag
-  const colTreeItems = dndProvider.getChildren();
+  const allTreeItems = dndProvider.getChildren();
+
+  const colTreeItems = allTreeItems.filter(c => c.kind === 'collection');
   const sourceColItem = colTreeItems[1];
   const targetColItem = colTreeItems[0];
 
@@ -2241,11 +2262,12 @@ console.log('✓ Request panel script integrity & syntax validation passed');
     const toolsProvider = new BlueByrdToolsTreeProvider(stateManager43, mockTokenService43);
     const toolItems = toolsProvider.getChildren();
 
-    assert.strictEqual(toolItems.length, 6, 'Tools panel must have 6 items');
+    assert.strictEqual(toolItems.length, 7, 'Tools panel must have 7 items (Profiles section removed)');
 
     const expectedLabels = [
-      'History Inspector',
+      'Manage Profiles & Settings...',
       'OAuth Token Vault',
+      'History Inspector',
       'Import from cURL...',
       'Import API Data...',
       'Export Full Backup...',
@@ -2354,7 +2376,1313 @@ console.log('✓ Request panel script integrity & syntax validation passed');
     console.log('✓ Token Vault Provenance, UI Layout Consistency & Nest Icon verified');
   }
 
-  console.log('\nAll 44 verification test suites passed successfully! 🎉');
+  // Test 45: Live Inherited Headers Update, Profile Headers & Dynamic Child Base URL Inheritance
+  {
+    // 1. Verify StateManager onDidChangeState Event Emitter
+    let stateChangeEventFired = false;
+    let stateChangeReceivedState = null;
+    const disposable = stateManager.onDidChangeState((newState) => {
+      stateChangeEventFired = true;
+      stateChangeReceivedState = newState;
+    });
+
+    stateManager.saveEnvironment('Suite45-Parent', {
+      id: 'env-suite45-parent',
+      baseUrl: 'https://api.suite45-parent.com',
+      headers: {
+        'X-Env-Common': 'parent-value',
+        'X-Parent-Only': 'from-parent'
+      },
+      variables: {
+        parentCluster: 'cluster-alpha'
+      }
+    });
+
+    assert.strictEqual(stateChangeEventFired, true, 'stateManager.save() must fire onDidChangeState event');
+    assert(stateChangeReceivedState?.environments['Suite45-Parent'], 'Event payload must contain updated environment state');
+    disposable.dispose();
+
+    // 2. Verify Child Environment dynamically inherits baseUrl from Parent Environment
+    stateManager.saveEnvironment('Suite45-Child', {
+      id: 'env-suite45-child',
+      baseUrl: '', // Empty baseUrl so it inherits dynamically
+      inheritsFrom: 'Suite45-Parent',
+      headers: {
+        'X-Env-Common': 'child-override-val',
+        'X-Child-Only': 'from-child'
+      },
+      variables: {
+        childZone: 'us-west-2'
+      }
+    });
+
+    const childVarsInitial = variableService.resolveVariables('Development', 'Suite45-Child');
+    assert.strictEqual(childVarsInitial['baseUrl'], 'https://api.suite45-parent.com', 'Child environment with empty baseUrl must inherit baseUrl from parent');
+    assert.strictEqual(childVarsInitial['parentCluster'], 'cluster-alpha', 'Child environment must inherit variables from parent');
+    assert.strictEqual(childVarsInitial['childZone'], 'us-west-2', 'Child environment must resolve its own variables');
+
+    // Interpolation check: {{baseUrl}}/endpoint
+    const interpolatedUrl = variableService.interpolate('{{baseUrl}}/v1/users', childVarsInitial);
+    assert.strictEqual(interpolatedUrl, 'https://api.suite45-parent.com/v1/users', '{{baseUrl}} must resolve to parent baseUrl in child environment');
+
+    // Dynamic Parent Base URL change: update parent baseUrl without editing child
+    const parentEnvObj = stateManager.getEnvironment('Suite45-Parent');
+    parentEnvObj.baseUrl = 'https://api-v2.suite45-parent.com';
+    stateManager.saveEnvironment('Suite45-Parent', parentEnvObj);
+
+    const childVarsAfterParentUpdate = variableService.resolveVariables('Development', 'Suite45-Child');
+    assert.strictEqual(childVarsAfterParentUpdate['baseUrl'], 'https://api-v2.suite45-parent.com', 'Child environment must dynamically reflect updated parent baseUrl without reopening');
+
+    // Override check: child sets its own baseUrl
+    const childEnvObj = stateManager.getEnvironment('Suite45-Child');
+    childEnvObj.baseUrl = 'https://custom.suite45-child.com';
+    stateManager.saveEnvironment('Suite45-Child', childEnvObj);
+
+    const childVarsOverridden = variableService.resolveVariables('Development', 'Suite45-Child');
+    assert.strictEqual(childVarsOverridden['baseUrl'], 'https://custom.suite45-child.com', 'Child environment with explicit baseUrl must override parent baseUrl');
+
+    // 3. Verify Profile Headers in resolveHeaders and resolveHeadersDetailed
+    const testProfile = stateManager.createProfile('Suite45-Profile');
+    testProfile.headers = {
+      'X-Profile-Trace': 'trace-suite45-id',
+      'X-Profile-Auth': 'Bearer test-suite-prof-token',
+      'X-Env-Common': 'from-profile'
+    };
+    stateManager.saveProfile(testProfile);
+
+    // Create a demo collection for header resolution
+    stateManager.saveCollection({
+      id: 'col-suite45',
+      name: 'Suite45 Collection',
+      folders: [
+        {
+          id: 'folder-suite45',
+          name: 'Folder 45',
+          requests: [],
+          headers: {
+            'X-Folder-Hdr': 'folder-val'
+          }
+        }
+      ],
+      requests: [],
+      headers: {
+        'X-Col-Hdr': 'col-val',
+        'X-Env-Common': 'from-collection'
+      }
+    });
+
+    const headerDetails = variableService.resolveHeadersDetailed(
+      'Suite45-Child',
+      'col-suite45',
+      'folder-suite45',
+      {
+        'X-Req-Custom': 'req-val'
+      },
+      testProfile.id
+    );
+
+    // Merged headers check
+    assert.strictEqual(headerDetails.merged['X-Profile-Trace'], 'trace-suite45-id', 'Profile headers must be present in merged headers');
+    assert.strictEqual(headerDetails.merged['X-Col-Hdr'], 'col-val', 'Collection headers must be present in merged headers');
+    assert.strictEqual(headerDetails.merged['X-Folder-Hdr'], 'folder-val', 'Folder headers must be present in merged headers');
+    assert.strictEqual(headerDetails.merged['X-Req-Custom'], 'req-val', 'Request headers must be present in merged headers');
+    assert.strictEqual(headerDetails.merged['X-Parent-Only'], 'from-parent', 'Parent environment headers must be present in merged headers');
+    assert.strictEqual(headerDetails.merged['X-Child-Only'], 'from-child', 'Child environment headers must be present in merged headers');
+    assert.strictEqual(headerDetails.merged['X-Env-Common'], 'child-override-val', 'Child environment must override parent, collection, and profile headers');
+
+    // Precedence and override flag check in inherited list
+    const profileItem = headerDetails.inherited.find(i => i.source === 'profile' && i.key === 'X-Profile-Trace');
+    assert(profileItem, 'Inherited list must contain profile headers with source profile');
+    assert(!profileItem.isOverridden, 'Non-overridden profile header must not be overridden');
+
+    const overriddenProfileItem = headerDetails.inherited.find(i => i.source === 'profile' && i.key === 'X-Env-Common');
+    assert(overriddenProfileItem, 'Inherited list must contain X-Env-Common for profile');
+    assert.strictEqual(overriddenProfileItem.isOverridden, true, 'Overridden profile header must have isOverridden true');
+
+    const overriddenColItem = headerDetails.inherited.find(i => i.source === 'collection' && i.key === 'X-Env-Common');
+    assert(overriddenColItem, 'Inherited list must contain X-Env-Common for collection');
+    assert.strictEqual(overriddenColItem.isOverridden, true, 'Overridden collection header must have isOverridden true');
+
+    const childEnvItem = headerDetails.inherited.find(i => i.source === 'environment' && i.key === 'X-Env-Common');
+    assert(childEnvItem, 'Inherited list must contain X-Env-Common for active child environment');
+    assert(!childEnvItem.isOverridden, 'Winning active environment header must not be overridden');
+
+    // 4. Verify Settings Panel HTML renders inherited placeholder and hint when parent is selected
+    const parentEnvInfo = { id: 'env-suite45-parent', name: 'Suite45-Parent', baseUrl: 'https://api-v2.suite45-parent.com' };
+    const childEnvWithEmptyBaseUrl = { id: 'env-suite45-child', baseUrl: '', inheritsFrom: 'env-suite45-parent' };
+    const renderedSettingsHtml = getSettingsPanelHtml(
+      'environment',
+      childEnvWithEmptyBaseUrl,
+      'Suite45-Child',
+      undefined,
+      [parentEnvInfo],
+      []
+    );
+
+    assert(renderedSettingsHtml.includes('Inherited: https://api-v2.suite45-parent.com'), 'Settings Panel HTML must show parent baseUrl in placeholder');
+    assert(renderedSettingsHtml.includes('Inherits from parent (https://api-v2.suite45-parent.com) when left blank'), 'Settings Panel HTML must render clear inheritance hint');
+    assert(renderedSettingsHtml.includes('envParentSelect.addEventListener(\'change\''), 'Settings Panel HTML must attach dynamic change listener to parent select');
+
+    console.log('✓ Live Inherited Headers Update, Profile Headers & Dynamic Child Base URL Inheritance verified');
+  }
+
+  // ==========================================
+  // Suite 46: Visual Environment Hierarchy Distinction (Root vs Parent vs Child)
+  // ==========================================
+  {
+    const stateManager46 = new BlueByrdStateManager(mockContext);
+    const envTreeProvider46 = new BlueByrdEnvironmentsTreeProvider(stateManager46);
+
+    const testState46 = {
+      activeProfileId: 'all',
+      activeEnvironmentName: 'None',
+      profiles: [{ id: 'prof-suite46', name: 'Suite 46 Profile' }],
+      environments: {
+        'Local': {
+          id: 'env-local-46',
+          name: 'Local',
+          baseUrl: 'https://local.api.com'
+        },
+        'Dev': {
+          id: 'env-dev-46',
+          name: 'Dev',
+          inheritsFrom: 'env-local-46',
+          baseUrl: 'https://dev.api.com'
+        },
+        'None': {
+          id: 'env-none-46',
+          name: 'None',
+          baseUrl: 'https://api.example.com'
+        }
+      },
+      collections: [],
+      history: []
+    };
+
+    stateManager46.save(testState46);
+    envTreeProvider46.refresh();
+
+    const rootNodes = envTreeProvider46.getChildren();
+    const envRootNodes = rootNodes.filter(n => n.kind === 'environment');
+    assert.strictEqual(envRootNodes.length, 2, 'There should be 2 root environment nodes: Local (parent) and None (standalone root)');
+
+    const localNode = envRootNodes.find(n => n.label === 'Local');
+    const noneNode = envRootNodes.find(n => n.label === 'None');
+
+    assert(localNode, 'Local parent environment node must exist');
+    assert(noneNode, 'None root environment node must exist');
+
+    // Verify Local is identified as a parent
+    assert(localNode.description.includes('Parent (1)'), 'Local node description must indicate Parent (1)');
+    assert.strictEqual(localNode.iconPath.id, 'server-process', 'Parent environment must use server-process icon');
+
+    // Verify Dev is child of Local and has arrow-subwards icon
+    const localChildren = envTreeProvider46.getChildren(localNode);
+    assert.strictEqual(localChildren.length, 1, 'Local should have 1 child');
+    const devChild = localChildren[0];
+    assert.strictEqual(devChild.label, 'Dev', 'Child must be Dev');
+    assert(devChild.description.includes('inherits: Local'), 'Dev child must show inherits: Local in description');
+    assert.strictEqual(devChild.iconPath.id, 'arrow-subwards', 'Child environment must use arrow-subwards icon');
+
+    // Verify None is identified as a standalone Root environment
+    assert(noneNode.description.includes('Root'), 'Standalone root environment None must have Root badge in description');
+    assert(noneNode.description.includes('✔ Active'), 'Active None node must show ✔ Active badge in description');
+    assert.strictEqual(noneNode.iconPath.id, 'server-environment', 'Standalone root environment must use server-environment icon');
+    assert.strictEqual(noneNode.iconPath.color.id, 'charts.green', 'Active standalone root environment must have green tint');
+
+    // Verify Explorer tree data provider matches the same hierarchy
+    const explorerProvider46 = new BlueByrdExplorerTreeDataProvider(stateManager46);
+    const explorerSections = explorerProvider46.getChildren();
+    const profilesSection = explorerSections[0];
+    const profileNodes = explorerProvider46.getChildren(profilesSection);
+    const globalProfNode = profileNodes.find(p => p.label === 'Shared / Global') || profileNodes[0];
+    const [envSection] = explorerProvider46.getChildren(globalProfNode);
+    assert(envSection, 'Environments section must exist under profile in Explorer');
+
+    const explorerEnvRoots = explorerProvider46.getChildren(envSection);
+    const explorerLocal = explorerEnvRoots.find(e => e.label === 'Local');
+    const explorerNone = explorerEnvRoots.find(e => e.label === 'None');
+
+    assert(explorerLocal, 'Explorer Local must exist');
+    assert(explorerNone, 'Explorer None must exist');
+    assert(explorerLocal.description.includes('Parent (1)'), 'Explorer Local must indicate Parent (1)');
+    assert.strictEqual(explorerLocal.iconPath.id, 'server-process', 'Explorer Local must use server-process icon');
+    assert(explorerNone.description.includes('Root'), 'Explorer None must indicate Root');
+    assert.strictEqual(explorerNone.iconPath.id, 'server-environment', 'Explorer None must use server-environment icon');
+
+    const explorerDevChildren = explorerProvider46.getChildren(explorerLocal);
+    assert.strictEqual(explorerDevChildren.length, 1);
+    assert.strictEqual(explorerDevChildren[0].iconPath.id, 'arrow-subwards', 'Explorer child environment must use arrow-subwards icon');
+
+    console.log('✓ Visual Environment Hierarchy Distinction (Root vs Parent vs Child) verified');
+  }
+
+  // ==========================================
+  // Suite 47: Collection Base URL Precedence, No Environment & {{collectionBaseUrl}} / {{envBaseUrl}}
+  // ==========================================
+  {
+    const stateManager47 = new BlueByrdStateManager(mockContext);
+    const variableService47 = new VariableService(stateManager47);
+
+    const testState47 = {
+      activeProfileId: 'all',
+      activeEnvironmentName: 'Staging Env',
+      profiles: [{ id: 'prof-47', name: 'Profile 47' }],
+      environments: {
+        'Staging Env': {
+          id: 'env-staging-47',
+          name: 'Staging Env',
+          baseUrl: 'https://staging.corporate.com',
+          variables: { envVar: 'env-val' }
+        }
+      },
+      collections: [
+        {
+          id: 'col-indexer-47',
+          name: 'Indexer Collection',
+          baseUrl: 'https://indexer.node.com:8980',
+          baseUrlPreference: 'collection',
+          preferCollectionBaseUrl: true,
+          variables: { colVar: 'col-val' },
+          folders: [],
+          requests: []
+        }
+      ],
+      history: []
+    };
+
+    stateManager47.save(testState47);
+
+    // 1. With baseUrlPreference: 'collection', Collection Base URL wins over active environment
+    const resColPref = variableService47.resolveVariablesDetailed(
+      undefined,
+      'Staging Env',
+      'Indexer Collection',
+      undefined,
+      [],
+      'collection'
+    );
+
+    assert.strictEqual(resColPref.resolved['baseUrl'], 'https://indexer.node.com:8980', 'baseUrl must resolve to collection base URL when preference is collection');
+    assert.strictEqual(resColPref.resolved['collectionBaseUrl'], 'https://indexer.node.com:8980', 'collectionBaseUrl must always be available');
+    assert.strictEqual(resColPref.resolved['envBaseUrl'], 'https://staging.corporate.com', 'envBaseUrl must always be available');
+    assert.strictEqual(resColPref.resolved['envVar'], 'env-val', 'Environment variables must still apply');
+    assert.strictEqual(resColPref.resolved['colVar'], 'col-val', 'Collection variables must still apply');
+
+    // Check overridden flag on environment's baseUrl in inherited
+    const envBaseUrlInherited = resColPref.inherited.find(i => i.key === 'baseUrl' && i.source === 'environment');
+    assert(envBaseUrlInherited, 'Environment baseUrl must be in inherited trace');
+    assert.strictEqual(envBaseUrlInherited.isOverridden, true, 'Environment baseUrl must be marked as overridden');
+
+    // 2. With baseUrlPreference: 'environment', Environment Base URL wins
+    const resEnvPref = variableService47.resolveVariablesDetailed(
+      undefined,
+      'Staging Env',
+      'Indexer Collection',
+      undefined,
+      [],
+      'environment'
+    );
+    assert.strictEqual(resEnvPref.resolved['baseUrl'], 'https://staging.corporate.com', 'baseUrl must resolve to environment base URL when preference is environment');
+    assert.strictEqual(resEnvPref.resolved['collectionBaseUrl'], 'https://indexer.node.com:8980', 'collectionBaseUrl must still be available');
+
+    // 3. With "No Environment" (empty environment), Collection Base URL is preserved with 0 environment overrides
+    const resNoEnv = variableService47.resolveVariablesDetailed(
+      undefined,
+      '',
+      'Indexer Collection',
+      undefined,
+      []
+    );
+    assert.strictEqual(resNoEnv.resolved['baseUrl'], 'https://indexer.node.com:8980', 'baseUrl must resolve to collection base URL when no environment is active');
+    assert.strictEqual(resNoEnv.resolved['envBaseUrl'], undefined, 'No envBaseUrl when no environment is active');
+    assert.strictEqual(resNoEnv.resolved['colVar'], 'col-val', 'Collection variables must be present');
+
+    // 4. Verify Request Panel HTML renders No Environment and Base URL preference selector
+    const reqPanelHtml = getRequestPanelHtml(
+      {
+        collection: 'Indexer Collection',
+        environment: '',
+        baseUrlPreference: 'collection'
+      },
+      testState47,
+      [],
+      []
+    );
+    assert(reqPanelHtml.includes('No Environment (Collection Defaults)'), 'Request panel must render No Environment option');
+    assert(reqPanelHtml.includes('id="select-base-url-pref"'), 'Request panel must render select-base-url-pref');
+    assert(reqPanelHtml.includes('value="collection" selected'), 'Collection preference option must be selected');
+
+    console.log('✓ Collection Base URL Precedence, No Environment & {{collectionBaseUrl}} / {{envBaseUrl}} verified');
+  }
+
+  // ==========================================
+  // Suite 48: Single Active Profile Selection, Settings Panel & Ctrl+Z Undo
+  // ==========================================
+  {
+    const stateManager48 = new BlueByrdStateManager(mockContext);
+    const mockTokenService48 = {
+      getAllTokens: () => [
+        {
+          id: 'tok-suite48',
+          profileId: 'prof-dev',
+          profileName: 'Developer',
+          envName: 'Dev Local',
+          tokenName: 'Suite48 Bearer',
+          accessToken: 'bb_oauth_suite48_secret_token_123',
+          expiresAt: Date.now() + 7200000
+        }
+      ],
+      getTokens: async () => [],
+      pruneAllExpiredTokens: async () => 0
+    };
+
+    const testState48 = {
+      activeProfileId: 'prof-dev',
+      activeEnvironmentName: 'Dev Local',
+      profiles: [
+        { id: 'prof-dev', name: 'Developer', auth: { type: 'none' }, variables: { devKey: 'devVal' }, headers: {} },
+        { id: 'prof-staging', name: 'Staging', auth: { type: 'none' }, variables: { stgKey: 'stgVal' }, headers: {} },
+      ],
+      environments: {
+        'Dev Local': { id: 'env-dev-local', baseUrl: 'http://localhost:3000' }
+      },
+      collections: [],
+      history: [],
+      settings: {
+        baseUrlPreference: 'auto',
+        requestTimeoutMs: 30000,
+        followRedirects: true,
+        rejectUnauthorized: true
+      }
+    };
+
+    stateManager48.save(testState48);
+
+    // 1. Verify ProfilesTreeProvider renders single active selection
+    const profilesTree48 = new BlueByrdProfilesTreeProvider(stateManager48, mockTokenService48);
+    const initialRootProfiles = await profilesTree48.getChildren();
+
+    const devNode = initialRootProfiles.find(p => p.label === 'Developer');
+    const stagingNode = initialRootProfiles.find(p => p.label === 'Staging');
+    const globalNode = initialRootProfiles.find(p => p.label === 'Shared / Global');
+    const settingsNode = initialRootProfiles.find(p => p.label.includes('Manage Profiles & Settings'));
+
+    assert(devNode, 'Developer profile node must exist');
+    assert(stagingNode, 'Staging profile node must exist');
+    assert(globalNode, 'Shared / Global profile node must exist');
+    assert(settingsNode, 'Manage Profiles & Settings action node must exist');
+
+    // Developer is active, Staging is inactive
+    assert(devNode.description.includes('✔ Active (1 active)'), 'Developer profile must show ✔ Active (1 active)');
+    assert.strictEqual(devNode.iconPath.id, 'check', 'Active profile must have check icon');
+    assert.strictEqual(devNode.iconPath.color.id, 'charts.green', 'Active profile must have green check');
+
+    assert(stagingNode.description.includes('Click to activate'), 'Inactive profile must show Click to activate');
+    assert.strictEqual(stagingNode.iconPath.id, 'circle-outline', 'Inactive profile must have circle-outline icon');
+
+    // 2. Switch active profile to Staging -> Developer becomes inactive, Staging becomes active
+    stateManager48.setActiveProfileId('prof-staging');
+    profilesTree48.refresh();
+    const switchedRootProfiles = await profilesTree48.getChildren();
+    const switchedDev = switchedRootProfiles.find(p => p.label === 'Developer');
+    const switchedStaging = switchedRootProfiles.find(p => p.label === 'Staging');
+
+    assert(switchedStaging.description.includes('✔ Active (1 active)'), 'Staging profile must now show ✔ Active');
+    assert.strictEqual(switchedStaging.iconPath.id, 'check');
+    assert(switchedDev.description.includes('Click to activate'), 'Developer profile must now show Click to activate');
+    assert.strictEqual(switchedDev.iconPath.id, 'circle-outline');
+
+    // 3. Verify getGlobalSettingsPanelHtml renders all 5 tabs and valid JavaScript
+    const settingsHtml = getGlobalSettingsPanelHtml(
+      testState48,
+      mockTokenService48.getAllTokens(),
+      'profiles',
+      'prof-staging'
+    );
+
+    assert(settingsHtml.includes('byrdsnest api client Settings'), 'Settings HTML must have byrdsnest title');
+    assert(settingsHtml.includes('id="tab-profiles"'), 'Settings HTML must have tab-profiles');
+    assert(settingsHtml.includes('id="tab-baseurl"'), 'Settings HTML must have tab-baseurl');
+    assert(settingsHtml.includes('id="tab-network"'), 'Settings HTML must have tab-network');
+    assert(settingsHtml.includes('id="tab-tokens"'), 'Settings HTML must have tab-tokens');
+    assert(settingsHtml.includes('id="tab-data"'), 'Settings HTML must have tab-data');
+    assert(settingsHtml.includes('Auto (Collection First) &mdash; Recommended'), 'Settings HTML must offer Auto Base URL choice');
+    assert(settingsHtml.includes('Suite48 Bearer'), 'Settings HTML must show stored tokens in Token Vault tab');
+
+    // Validate client script syntax in settings HTML
+    const scriptMatch = settingsHtml.match(/<script>([\s\S]*?)<\/script>/);
+    assert(scriptMatch, 'Settings HTML must contain <script>');
+    assert.doesNotThrow(() => {
+      new Function('acquireVsCodeApi', scriptMatch[1]);
+    }, 'Client script in global settings HTML must be valid JavaScript without syntax errors');
+
+    // 4. Verify Request Panel HTML has Undo / Redo (Ctrl+Z) and Tab indentation handling
+    const reqHtmlWithUndo = getRequestPanelHtml(
+      { collection: 'Indexer Collection' },
+      testState48,
+      [],
+      []
+    );
+    assert(reqHtmlWithUndo.includes('Comprehensive Undo / Redo Manager (Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z)'), 'Request panel HTML must contain Undo/Redo Manager');
+    assert(reqHtmlWithUndo.includes('performUndo'), 'Request panel HTML must implement performUndo');
+    assert(reqHtmlWithUndo.includes('performRedo'), 'Request panel HTML must implement performRedo');
+    assert(reqHtmlWithUndo.includes('recordUndoSnapshot'), 'Request panel HTML must implement recordUndoSnapshot');
+    assert(reqHtmlWithUndo.includes("e.key === 'Tab'"), 'Request panel HTML must handle Tab indentation in textareas');
+
+    console.log('✓ Single Active Profile Selection, Settings Panel & Ctrl+Z Undo verified');
+  }
+
+  // Test 49: Disabled Base URL, Clean Command Manifest & Tools-scoped Profiles
+  {
+    // 1. Verify Manifest clean command titles and category
+    const pkg = require('../package.json');
+    const cmds = pkg.contributes.commands;
+    cmds.forEach(cmd => {
+      assert.strictEqual(cmd.category, 'byrdsnest api client', `Command ${cmd.command} must have category 'byrdsnest api client'`);
+      assert(!cmd.title.startsWith('byrdsnest api client:'), `Command ${cmd.command} title must not repeat category name prefix`);
+    });
+
+    // 2. Verify sidebar views (Collections, Environments, Tools)
+    const views = pkg.contributes.views.byrdsnestApiClient;
+    const viewIds = views.map(v => v.id);
+    assert(viewIds.includes('byrdsnestCollections'), 'Must include Collections view');
+    assert(viewIds.includes('byrdsnestEnvironments'), 'Must include Environments view');
+    assert(viewIds.includes('byrdsnestTools'), 'Must include Tools view');
+    assert(!viewIds.includes('byrdsnestProfiles'), 'Profiles must not be a top-level sidebar accordion');
+
+    // 3. Verify VariableService with baseUrlDisabled on Collection
+    const mockStorage49 = new Map();
+    const mockCtx49 = {
+      workspaceState: {
+        get: (k) => mockStorage49.get(k),
+        update: (k, v) => { mockStorage49.set(k, v); return Promise.resolve(); }
+      }
+    };
+    const sm49 = new BlueByrdStateManager(mockCtx49);
+    const testState49 = sm49.getState();
+
+    testState49.environments['Staging'] = {
+      id: 'env-staging-49',
+      baseUrl: 'https://staging.api.example.com',
+      variables: {},
+      headers: {}
+    };
+
+    testState49.collections = [
+      {
+        id: 'col-disabled-url',
+        name: 'Disabled URL Col',
+        baseUrl: 'https://collection-url.example.com',
+        baseUrlDisabled: true,
+        folders: [],
+        requests: []
+      },
+      {
+        id: 'col-enabled-url',
+        name: 'Enabled URL Col',
+        baseUrl: 'https://collection-url.example.com',
+        baseUrlDisabled: false,
+        folders: [],
+        requests: []
+      }
+    ];
+    sm49.save(testState49);
+
+    const vs49 = new VariableService(sm49);
+
+    // Case A: Collection baseUrlDisabled = true -> collection does not override or set baseUrl
+    const varsWithDisabledCol = vs49.resolveVariablesDetailed(
+      undefined,
+      'Staging',
+      'col-disabled-url',
+      undefined,
+      [],
+      'collection'
+    );
+    assert.strictEqual(varsWithDisabledCol.resolved['collectionBaseUrl'], undefined, 'Disabled collection baseUrl must not be exposed');
+    assert.strictEqual(varsWithDisabledCol.resolved['baseUrl'], 'https://staging.api.example.com', 'Environment baseUrl must prevail when collection baseUrl is disabled');
+
+    // Case B: Collection baseUrlDisabled = false -> collection baseUrl resolves
+    const varsWithEnabledCol = vs49.resolveVariablesDetailed(
+      undefined,
+      'Staging',
+      'col-enabled-url',
+      undefined,
+      [],
+      'collection'
+    );
+    assert.strictEqual(varsWithEnabledCol.resolved['baseUrl'], 'https://collection-url.example.com', 'Enabled collection baseUrl must resolve');
+
+    // Case C: Environment baseUrlDisabled = true -> environment baseUrl does not resolve
+    testState49.environments['Staging'].baseUrlDisabled = true;
+    sm49.save(testState49);
+    const varsWithDisabledEnv = vs49.resolveVariablesDetailed(
+      undefined,
+      'Staging',
+      'col-disabled-url',
+      undefined,
+      [],
+      'environment'
+    );
+    assert.strictEqual(varsWithDisabledEnv.resolved['baseUrl'], undefined, 'Disabled environment baseUrl must not resolve');
+    assert.strictEqual(varsWithDisabledEnv.resolved['envBaseUrl'], undefined, 'Disabled environment envBaseUrl must not be exposed');
+
+    // Case D: baseUrlPreference = 'none' -> neither baseUrl resolves
+    const varsWithNonePref = vs49.resolveVariablesDetailed(
+      undefined,
+      'Staging',
+      'col-enabled-url',
+      undefined,
+      [],
+      'none'
+    );
+    assert.strictEqual(varsWithNonePref.resolved['baseUrl'], undefined, "baseUrlPreference 'none' must not set baseUrl");
+
+    // 4. Verify Settings Panel HTML renders Disable Base URL toggles
+    const envSettingsHtml = getSettingsPanelHtml('environment', testState49.environments['Staging'], 'Staging');
+    assert(envSettingsHtml.includes('id="base-url-disabled"'), 'Environment settings HTML must have base-url-disabled checkbox');
+    assert(envSettingsHtml.includes('Disable Base URL'), 'Environment settings HTML must include Disable Base URL label');
+
+    const colSettingsHtml = getSettingsPanelHtml('collection', testState49.collections[0], 'Disabled URL Col');
+    assert(colSettingsHtml.includes('id="col-base-url-disabled"'), 'Collection settings HTML must have col-base-url-disabled checkbox');
+    assert(colSettingsHtml.includes('Disable Base URL'), 'Collection settings HTML must include Disable Base URL label');
+
+    console.log('✓ Disabled Base URL (Collection & Environment), Clean Commands & Tools Profiles verified');
+  }
+
+  // ==========================================
+  // Suite 50: Profile Color Themes (Settings, Palettes, Status Bar, Webviews, and Tree Icons)
+  // ==========================================
+  {
+    const isolatedContext = {
+      storage: {},
+      workspaceState: {
+        get(key) { return this[key]; },
+        update(key, val) { this[key] = val; }
+      }
+    };
+    const stateManager50 = new BlueByrdStateManager(isolatedContext);
+    const state50 = stateManager50.getState();
+
+    // 1. Verify default state profiles have preset color themes
+    const devProf = state50.profiles.find(p => p.id === 'profile-dev');
+    const stagingProf = state50.profiles.find(p => p.id === 'profile-staging');
+    const prodProf = state50.profiles.find(p => p.id === 'profile-prod');
+
+    assert(devProf, 'Dev profile must exist in default state');
+    assert.strictEqual(devProf.color, '#10b981', 'Dev profile must have Dev Green color theme');
+    assert(stagingProf, 'Staging profile must exist in default state');
+    assert.strictEqual(stagingProf.color, '#f59e0b', 'Staging profile must have Staging Amber color theme');
+    assert(prodProf, 'Production profile must exist in default state');
+    assert.strictEqual(prodProf.color, '#ef4444', 'Prod profile must have Prod Red color theme');
+
+    // 2. Create custom profile with explicit color and verify persistence across normalization
+    const customProf = stateManager50.createProfile('Canary Testing', undefined, '#8b5cf6');
+    assert.strictEqual(customProf.color, '#8b5cf6', 'Created profile must retain custom color');
+    const normalized = stateManager50.normalizeState(stateManager50.getState());
+    const normCustom = normalized.profiles.find(p => p.id === customProf.id);
+    assert(normCustom, 'Normalized profiles must contain custom profile');
+    assert.strictEqual(normCustom.color, '#8b5cf6', 'Normalized profile must preserve custom color theme');
+
+    // 3. Verify Global Settings Panel HTML renders color swatches, picker, and active theme
+    const globalSettingsHtml = getGlobalSettingsPanelHtml(state50, [], 'profiles', devProf.id);
+    assert(globalSettingsHtml.includes('class="color-swatch-btn'), 'Global Settings HTML must render color swatch buttons');
+    assert(globalSettingsHtml.includes('id="prof-color-picker"'), 'Global Settings HTML must render HTML5 color picker');
+    assert(globalSettingsHtml.includes('id="prof-color-input"'), 'Global Settings HTML must render hex color input');
+    assert(globalSettingsHtml.includes('id="prof-theme-preview"'), 'Global Settings HTML must render theme preview pill');
+    assert(globalSettingsHtml.includes('--primary: #10b981;'), 'Global Settings HTML must theme --primary with selected profile color');
+    assert(globalSettingsHtml.includes('style="border-left: 3px solid #10b981;"'), 'Selected profile card must have left color accent border');
+
+    // 4. Verify standalone Profile Settings Panel HTML
+    const profileSettingsHtml = getSettingsPanelHtml('profile', customProf, customProf.name);
+    assert(profileSettingsHtml.includes('Profile Color Theme'), 'Profile Settings HTML must render Profile Color Theme banner');
+    assert(profileSettingsHtml.includes('id="prof-color-picker"'), 'Profile Settings HTML must render color picker input');
+    assert(profileSettingsHtml.includes('value="#8b5cf6"'), 'Profile Settings HTML must populate current profile color');
+    assert(profileSettingsHtml.includes('--primary: #8b5cf6;'), 'Profile Settings HTML must theme --primary with profile color');
+
+    // 5. Verify Request Panel HTML renders active profile accent and indicator dot
+    const requestPanelHtml = getRequestPanelHtml(
+      { profileId: 'profile-dev' },
+      state50,
+      [],
+      [],
+      []
+    );
+    assert(requestPanelHtml.includes('--profile-accent: #10b981;'), 'Request Panel HTML must set --profile-accent to active profile color');
+    assert(requestPanelHtml.includes('--primary: var(--profile-accent);'), 'Request Panel HTML must bind --primary to --profile-accent');
+    assert(requestPanelHtml.includes('id="profile-indicator-dot"'), 'Request Panel HTML must render profile indicator dot');
+    assert(requestPanelHtml.includes('data-color="#10b981"'), 'Profile option in Request Panel must carry data-color');
+
+    // 6. Verify Tools Tree Provider has Manage Profiles & Settings (no longer has collapsible Profiles section)
+    const toolsProvider50 = new BlueByrdToolsTreeProvider(stateManager50);
+    const sections = await toolsProvider50.getChildren();
+    const manageItem50 = sections.find(s => s.label === 'Manage Profiles & Settings...');
+    assert(manageItem50, 'Manage Profiles & Settings item must exist in Tools tree');
+    assert.strictEqual(manageItem50.command.command, 'byrdsnestApiClient.openSettings', 'Manage Profiles item must open settings');
+    const profilesSectionGone = sections.find(s => s.itemId === 'tool-profiles');
+    assert.strictEqual(profilesSectionGone, undefined, 'Profiles collapsible section must be removed from Tools tree');
+
+    console.log('✓ Profile Color Themes (Settings, Palettes, Status Bar, Webviews, and Tree Icons) verified');
+  }
+
+  // ==========================================
+  // Suite 51: Profile Banner in Environments Tree, Removed from Collections & Tools
+  // ==========================================
+  {
+    const stateManager51 = new BlueByrdStateManager(mockContext);
+    const stagingProf = stateManager51.createProfile('Staging Profile', undefined, '#f59e0b');
+    stateManager51.setActiveProfileId(stagingProf.id);
+
+    // 1. Banner must appear in Environments tree (first item)
+    const envsProvider51 = new BlueByrdEnvironmentsTreeProvider(stateManager51);
+    const envNodes = envsProvider51.getChildren();
+    assert(envNodes.length >= 1, 'Environments tree must have items');
+    const bannerNode = envNodes[0];
+    assert.strictEqual(bannerNode.itemId, 'active-profile-banner', 'First item in environments tree must be active profile banner');
+    assert.strictEqual(bannerNode.kind, 'active-filter', 'Banner item kind must be active-filter');
+    assert.strictEqual(bannerNode.label, 'Profile: Staging Profile', 'Banner item label must reflect active profile name');
+    assert.strictEqual(bannerNode.description, '(click to switch)', 'Banner item description must indicate click to switch');
+    assert.strictEqual(bannerNode.command.command, 'byrdsnestApiClient.switchActiveProfile', 'Banner command must switch active profile');
+    assert.strictEqual(bannerNode.contextValue, 'byrdsnest.activeFilter', 'Banner contextValue must be byrdsnest.activeFilter');
+    assert(bannerNode.iconPath && bannerNode.iconPath.path.includes(encodeURIComponent('#f59e0b')), 'Banner icon must be SVG tinted with active profile color');
+
+    // 2. Banner must NOT appear in Collections tree
+    const collectionsProvider51 = new BlueByrdCollectionsTreeProvider(stateManager51);
+    const colNodes = collectionsProvider51.getChildren();
+    const colBanner = colNodes.find(n => n.itemId === 'active-profile-banner');
+    assert.strictEqual(colBanner, undefined, 'Collections tree must NOT have active profile banner (moved to Environments)');
+
+    // 3. Profiles section must NOT appear in Tools tree
+    const toolsProvider51 = new BlueByrdToolsTreeProvider(stateManager51);
+    const toolItems = toolsProvider51.getChildren();
+    const profilesSection = toolItems.find(t => t.label === 'Profiles' || t.itemId === 'tool-profiles');
+    assert.strictEqual(profilesSection, undefined, 'Tools tree must NOT have a Profiles collapsible section (removed)');
+
+    // 4. Manage Profiles & Settings must still be in Tools
+    const manageItem = toolItems.find(t => t.label === 'Manage Profiles & Settings...');
+    assert(manageItem, 'Tools tree must still have Manage Profiles & Settings item');
+    assert.strictEqual(manageItem.command.command, 'byrdsnestApiClient.openSettings', 'Manage Profiles item must open settings');
+
+    // 5. Verify package.json inline menu actions and icons
+    const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, '../package.json'), 'utf8'));
+    const switchCmd = packageJson.contributes.commands.find(c => c.command === 'byrdsnestApiClient.switchActiveProfile');
+    assert(switchCmd, 'byrdsnestApiClient.switchActiveProfile must be registered in package.json');
+    assert.strictEqual(switchCmd.icon, '$(arrow-swap)', 'switchActiveProfile icon must be $(arrow-swap)');
+
+    const contextMenus = packageJson.contributes.menus['view/item/context'];
+    const bannerSwitchAction = contextMenus.find(m => m.command === 'byrdsnestApiClient.switchActiveProfile' && m.when.includes('byrdsnest.activeFilter'));
+    assert(bannerSwitchAction, 'view/item/context must include switchActiveProfile for activeFilter');
+    assert.strictEqual(bannerSwitchAction.group, 'inline@1', 'switchActiveProfile must be inline@1');
+
+    const bannerSettingsAction = contextMenus.find(m => m.command === 'byrdsnestApiClient.openSettings' && m.when.includes('byrdsnest.activeFilter'));
+    assert(bannerSettingsAction, 'view/item/context must include openSettings for activeFilter');
+    assert.strictEqual(bannerSettingsAction.group, 'inline@2', 'openSettings must be inline@2');
+
+    console.log('✓ Profile Banner in Environments Tree, Removed from Collections & Tools verified');
+  }
+
+  // ==========================================
+  // Suite 52: Actual Resolved URL in Request Panel Green Box with Recursive Variables
+  // ==========================================
+  {
+    const stateManager52 = new BlueByrdStateManager(mockContext);
+    const state52 = stateManager52.getState();
+    const reqHtml52 = getRequestPanelHtml(
+      {
+        url: '{{baseUrl}}/health',
+        method: 'GET'
+      },
+      state52,
+      [
+        { key: 'baseUrl', value: 'https://{{customer}}{{stack}}.sce.manh.com', source: 'collection', sourceName: 'Algod REST API' },
+        { key: 'customer', value: 'twcc', source: 'collection', sourceName: 'Algod REST API' },
+        { key: 'stack', value: 'p', source: 'profile', sourceName: 'Production' }
+      ]
+    );
+
+    // 1. Verify CSS styles for the actual resolved URL green pill
+    assert(reqHtml52.includes('.token-pill.url-resolved-pill'), 'Request panel must define .url-resolved-pill styles');
+    assert(reqHtml52.includes('.token-pill.url-resolved-pill .token-val-url'), 'Request panel must define .token-val-url styles');
+    assert(reqHtml52.includes('.token-copy-icon'), 'Request panel must define .token-copy-icon styles');
+
+    // 2. Extract and execute script functions in a sandbox to verify resolveRecursively
+    const scriptMatch52 = reqHtml52.match(/<script>([\s\S]*?)<\/script>/);
+    assert(scriptMatch52, 'Script block must be present');
+
+    const vm = require('vm');
+    const createMockEl = () => ({ style: {}, classList: { add: () => {}, remove: () => {} }, setAttribute: () => {}, appendChild: () => {}, addEventListener: () => {}, querySelector: () => createMockEl(), querySelectorAll: () => [], value: '', innerHTML: '', textContent: '' });
+    const sandbox52 = {
+      console,
+      acquireVsCodeApi: () => ({ postMessage: () => {}, getState: () => ({}), setState: () => {} }),
+      document: {
+        addEventListener: () => {},
+        getElementById: () => createMockEl(),
+        querySelector: () => createMockEl(),
+        querySelectorAll: () => [],
+        createElement: () => createMockEl()
+      },
+      window: { addEventListener: () => {} },
+      navigator: { clipboard: { writeText: () => {} } },
+      currentInheritedVars: [
+        { key: 'baseUrl', value: 'https://{{customer}}{{stack}}.sce.manh.com', source: 'collection', sourceName: 'Algod REST API' },
+        { key: 'customer', value: 'twcc', source: 'collection', sourceName: 'Algod REST API' },
+        { key: 'stack', value: 'p', source: 'profile', sourceName: 'Production' }
+      ]
+    };
+    vm.createContext(sandbox52);
+
+    const funcCode = `
+      ${scriptMatch52[1]}
+      this.__testResolve = resolveRecursively;
+      this.__testAnalyze = analyzeVariables;
+      this.__testGetActiveMap = getActiveVariableMap;
+    `;
+    vm.runInContext(funcCode, sandbox52);
+
+    const testResolve = sandbox52.__testResolve;
+    const testMap = sandbox52.__testGetActiveMap();
+    const resolution = testResolve('{{baseUrl}}/health', testMap);
+
+    assert.strictEqual(resolution.hasVariables, true, 'Resolution must detect variables');
+    assert.strictEqual(resolution.hasUnresolved, false, 'Resolution must have no unresolved tokens');
+    assert.strictEqual(resolution.resolvedText, 'https://twccp.sce.manh.com/health', 'Resolved URL must be fully recursively resolved to actual URL in green box');
+    assert.strictEqual(resolution.resolvedCount, 3, 'All 3 nested variables must be counted as resolved');
+
+    // Test unresolved token handling
+    const unresolvedRes = testResolve('{{baseUrl}}/orders/{{orderId}}', testMap);
+    assert.strictEqual(unresolvedRes.hasUnresolved, true, 'Missing token must be flagged as unresolved');
+    assert(unresolvedRes.unresolvedTokens.includes('orderId'), 'unresolvedTokens must include orderId');
+    assert.strictEqual(unresolvedRes.resolvedText, 'https://twccp.sce.manh.com/orders/{{orderId}}', 'Resolved prefix must be expanded even with unresolved suffix');
+
+    console.log('✓ Actual Resolved URL in Request Panel Green Box with Recursive Variables verified');
+  }
+
+  // ==========================================
+  // Suite 53: JSON Formatting, Color Highlighting & VS Code Editor Integration
+  // ==========================================
+  {
+    const fs = require('fs');
+    const { getRequestPanelHtml } = require(path.join(repoDist, 'views/panels/requestPanelHtml'));
+
+    const mockWebview = {
+      asWebviewUri: (uri) => uri,
+      cspSource: 'vscode-webview:',
+      postMessage: async () => true,
+      onDidReceiveMessage: () => ({ dispose: () => {} })
+    };
+
+    const mockReq = {
+      id: 'req-json-test',
+      name: 'Get User Profile',
+      method: 'GET',
+      url: 'https://api.example.com/user/1',
+      headers: [],
+      bodyType: 'json',
+      body: '{"name":"Alice","age":30,"active":true,"details":null}',
+      auth: { type: 'inherit' }
+    };
+
+    const stateManager53 = new BlueByrdStateManager(mockContext);
+    const html = getRequestPanelHtml(mockReq, stateManager53.getState());
+
+    // 1. Verify CSS syntax highlighting tokens
+    assert(html.includes('.json-key'), 'HTML must include .json-key CSS rule');
+    assert(html.includes('.json-string'), 'HTML must include .json-string CSS rule');
+    assert(html.includes('.json-number'), 'HTML must include .json-number CSS rule');
+    assert(html.includes('.json-boolean'), 'HTML must include .json-boolean CSS rule');
+    assert(html.includes('.json-null'), 'HTML must include .json-null CSS rule');
+
+    // 2. Verify controls: Format/Raw toggle, Copy button, Open in Editor button
+    assert(html.includes('id="btn-format-resp"'), 'Response pane must have Format/Raw toggle button');
+    assert(html.includes('id="btn-copy-resp"'), 'Response pane must have Copy button');
+    assert(html.includes('id="btn-open-editor"'), 'Response pane must have Open in Editor button');
+    assert(html.includes('id="btn-edit-body-json"'), 'Request body pane must have Open in Editor button');
+
+    // 3. Test highlightJson logic inside client JS
+    const scriptMatch = html.match(/<script>([\s\S]*?)<\/script>/);
+    assert(scriptMatch, 'HTML must contain script block');
+
+    const vm = require('vm');
+    const createMockEl53 = () => ({ style: {}, classList: { add: () => {}, remove: () => {}, toggle: () => {}, contains: () => false }, setAttribute: () => {}, appendChild: () => {}, addEventListener: () => {}, querySelector: () => createMockEl53(), querySelectorAll: () => [], value: '', innerHTML: '', textContent: '' });
+    const sandbox53 = {
+      console: console,
+      acquireVsCodeApi: () => ({ postMessage: () => {}, getState: () => ({}), setState: () => {} }),
+      document: {
+        addEventListener: () => {},
+        getElementById: () => createMockEl53(),
+        querySelector: () => createMockEl53(),
+        querySelectorAll: () => [],
+        createElement: () => createMockEl53()
+      },
+      window: { addEventListener: () => {} },
+      navigator: { clipboard: { writeText: () => {} } }
+    };
+    vm.createContext(sandbox53);
+
+    const funcCode = `
+      ${scriptMatch[1]}
+      this.__testHighlightJson = highlightJson;
+    `;
+    vm.runInContext(funcCode, sandbox53);
+
+    const highlightJson = sandbox53.__testHighlightJson;
+    assert.strictEqual(typeof highlightJson, 'function', 'highlightJson must be defined');
+
+    const sampleJson = JSON.stringify({
+      username: "alice_jones",
+      count: 42,
+      is_valid: true,
+      data: null
+    }, null, 2);
+
+    const highlighted = highlightJson(sampleJson);
+    assert(highlighted.includes('<span class="json-key">"username"</span>'), 'JSON keys must be styled with .json-key');
+    assert(highlighted.includes('<span class="json-string">"alice_jones"</span>'), 'JSON strings must be styled with .json-string');
+    assert(highlighted.includes('<span class="json-number">42</span>'), 'JSON numbers must be styled with .json-number');
+    assert(highlighted.includes('<span class="json-boolean">true</span>'), 'JSON booleans must be styled with .json-boolean');
+    assert(highlighted.includes('<span class="json-null">null</span>'), 'JSON null must be styled with .json-null');
+
+    // 4. Verify RequestPanel handles openInEditor message
+    const panelSrc = fs.readFileSync(path.join(__dirname, '../src/views/panels/requestPanel.ts'), 'utf8');
+    assert(panelSrc.includes("message.type === 'openInEditor'"), 'RequestPanel must handle openInEditor message type');
+    assert(panelSrc.includes('vscode.workspace.openTextDocument'), 'RequestPanel must call openTextDocument');
+    assert(panelSrc.includes('vscode.window.showTextDocument'), 'RequestPanel must show document in editor beside panel');
+
+    console.log('✓ JSON Formatting, Color Highlighting & VS Code Editor Integration verified');
+  }
+
+  // ==========================================
+  // Suite 54: Profile-Scoped Hierarchical Environment Dropdown & Accurate Variable Resolution Truth
+  // ==========================================
+  {
+    const stateManager54 = new BlueByrdStateManager(mockContext);
+    const profTenant = stateManager54.createProfile('Tenant Profile', undefined, '#8b5cf6');
+    const testState54 = stateManager54.getState();
+    testState54.activeProfileId = profTenant.id;
+
+    // Add Profile-scoped environments (Parent -> Child)
+    testState54.environments['Tenant-Root'] = {
+      id: 'env-tenant-root',
+      name: 'Tenant-Root',
+      baseUrl: 'https://tenant.example.com',
+      profileId: profTenant.id,
+      variables: {},
+      headers: {}
+    };
+    testState54.environments['Tenant-Child'] = {
+      id: 'env-tenant-child',
+      name: 'Tenant-Child',
+      baseUrl: 'https://tenant-child.example.com',
+      profileId: profTenant.id,
+      inheritsFrom: 'Tenant-Root',
+      variables: {},
+      headers: {}
+    };
+
+    // Add Global environment
+    testState54.environments['Shared-Global'] = {
+      id: 'env-shared-global',
+      name: 'Shared-Global',
+      baseUrl: 'https://shared.example.com',
+      variables: {},
+      headers: {}
+    };
+
+    // Add Unrelated other profile environment (should be excluded when filtered by active profile)
+    testState54.environments['Other-Profile-Env'] = {
+      id: 'env-other-profile',
+      name: 'Other-Profile-Env',
+      baseUrl: 'https://other.example.com',
+      profileId: 'other-profile-id',
+      variables: {},
+      headers: {}
+    };
+
+    // 1. Verify Request Panel HTML renders optgroups and profile filtering
+    const reqHtml54 = getRequestPanelHtml(
+      {
+        url: '{{baseUrl}}/health',
+        method: 'GET'
+      },
+      testState54,
+      [
+        { key: 'baseUrl', value: 'http://localhost:8080', source: 'collection', sourceName: 'Algod REST API (Disabled)', isOverridden: true }
+      ]
+    );
+
+    assert(reqHtml54.includes('<optgroup label="Profile Environments (Tenant Profile)">'), 'Must render Profile Environments optgroup');
+    assert(reqHtml54.includes('<optgroup label="Shared / Global Environments">'), 'Must render Shared / Global Environments optgroup');
+    assert(reqHtml54.includes('Tenant-Root'), 'Profile environments must be included');
+    assert(reqHtml54.includes('↳ Tenant-Child (inherits: Tenant-Root)'), 'Child environment must have indentation and inherits annotation');
+    assert(reqHtml54.includes('Shared-Global'), 'Shared global environment must be included');
+    const selectEnvMatch = reqHtml54.match(/<select id="select-env"[^>]*>([\s\S]*?)<\/select>/);
+    assert(selectEnvMatch, 'select-env dropdown must be present');
+    assert(!selectEnvMatch[1].includes('Other-Profile-Env'), 'Environments belonging to other profiles must not be included in select-env options');
+
+    // 2. Verify Client-Side Variable Map Truth: Disabled variable MUST NOT be treated as active in varMap
+    const scriptMatch54 = reqHtml54.match(/<script>([\s\S]*?)<\/script>/);
+    assert(scriptMatch54, 'Script block must be present');
+
+    const vm54 = require('vm');
+    const mockEl54 = () => ({ style: {}, classList: { add: () => {}, remove: () => {} }, setAttribute: () => {}, appendChild: () => {}, addEventListener: () => {}, querySelector: () => mockEl54(), querySelectorAll: () => [], value: '', innerHTML: '', textContent: '' });
+    const sandbox54 = {
+      console,
+      acquireVsCodeApi: () => ({ postMessage: () => {}, getState: () => ({}), setState: () => {} }),
+      document: {
+        addEventListener: () => {},
+        getElementById: () => mockEl54(),
+        querySelector: () => mockEl54(),
+        querySelectorAll: () => [],
+        createElement: () => mockEl54()
+      },
+      window: { addEventListener: () => {} },
+      navigator: { clipboard: { writeText: () => {} } },
+      currentInheritedVars: [
+        { key: 'baseUrl', value: 'http://localhost:8080', source: 'collection', sourceName: 'Algod REST API (Disabled)', isOverridden: true }
+      ]
+    };
+    vm54.createContext(sandbox54);
+
+    const testCode54 = `
+      ${scriptMatch54[1]}
+      this.__testResolve = resolveRecursively;
+      this.__testGetActiveMap = getActiveVariableMap;
+      this.__testRenderEnvHtml = renderEnvironmentSelectHtml;
+    `;
+    vm54.runInContext(testCode54, sandbox54);
+
+    const testMap54 = sandbox54.__testGetActiveMap();
+    assert.strictEqual(testMap54['baseUrl'], undefined, 'Disabled/overridden baseUrl must NOT be present in varMap');
+
+    const resolution54 = sandbox54.__testResolve('{{baseUrl}}/health', testMap54);
+    assert.strictEqual(resolution54.hasUnresolved, true, '{{baseUrl}} must be flagged as unresolved when disabled');
+    assert(resolution54.unresolvedTokens.includes('baseUrl'), 'unresolvedTokens must include baseUrl');
+
+    // 3. Verify client-side renderEnvironmentSelectHtml reproduces optgroup hierarchy dynamically
+    const dynamicHtml = sandbox54.__testRenderEnvHtml(
+      [
+        { id: 'e1', name: 'Tenant-Root', profileId: profTenant.id },
+        { id: 'e2', name: 'Tenant-Child', inheritsFrom: 'Tenant-Root', profileId: profTenant.id },
+        { id: 'e3', name: 'Shared-Global' },
+        { id: 'e4', name: 'Other-Profile-Env', profileId: 'other-profile-id' }
+      ],
+      profTenant.id,
+      'Tenant-Root'
+    );
+    assert(dynamicHtml.includes('<optgroup label="Profile Environments'), 'Dynamic client generator must create optgroups');
+    assert(dynamicHtml.includes('Tenant-Root'), 'Dynamic client generator must include profile envs');
+    assert(dynamicHtml.includes('↳ Tenant-Child (inherits: Tenant-Root)'), 'Dynamic client generator must format hierarchy');
+    assert(!dynamicHtml.includes('Other-Profile-Env'), 'Dynamic client generator must filter out other profiles');
+
+    console.log('✓ Profile-Scoped Hierarchical Environment Dropdown & Accurate Variable Resolution Truth verified');
+  }
+
+  // ==========================================
+  // Test 55: Action Bar Decluttering, Active Environment Persistence & Variable Deduplication
+  // ==========================================
+  {
+    const { BlueByrdStateManager } = require(path.join(repoDist, 'state/stateManager'));
+    const { VariableService } = require(path.join(repoDist, 'services/variableService'));
+    const { getGlobalSettingsPanelHtml } = require(path.join(repoDist, 'views/panels/globalSettingsPanelHtml'));
+    const pkgJson = require('../package.json');
+
+    // 1. Verify action bar decluttering in package.json
+    const contextMenus = pkgJson.contributes.menus['view/item/context'];
+    
+    // deleteItem must NEVER be inline (prevent accidental misclicks and visual clutter)
+    const inlineDeletes = contextMenus.filter(m => m.command === 'byrdsnestApiClient.deleteItem' && m.group && m.group.startsWith('inline'));
+    assert.strictEqual(inlineDeletes.length, 0, 'No deleteItem action may be placed in an inline group');
+
+    // exportCollection and exportEnvironment must not be inline
+    const inlineExports = contextMenus.filter(m => (m.command === 'byrdsnestApiClient.exportCollection' || m.command === 'byrdsnestApiClient.exportEnvironment') && m.group && m.group.startsWith('inline'));
+    assert.strictEqual(inlineExports.length, 0, 'No export action may be placed in an inline group');
+
+    // Collection hover must only have inline@1 (newRequest), not 4 stacked icons
+    const colInlineActions = contextMenus.filter(m => m.when && m.when.includes('byrdsnest.collection') && m.group && m.group.startsWith('inline'));
+    assert.strictEqual(colInlineActions.length, 1, 'Collection item hover must only have 1 inline action (newRequest)');
+    assert.strictEqual(colInlineActions[0].command, 'byrdsnestApiClient.newRequest');
+
+    // 2. Verify variable deduplication in environment resolution
+    const sm55 = new BlueByrdStateManager(mockContext);
+    const vs55 = new VariableService(sm55);
+
+    // Save an environment that has both baseUrl property AND baseUrl in variables dictionary
+    sm55.saveEnvironment('TestEnv', {
+      id: 'env-test-dedup',
+      baseUrl: 'https://api.custom.com',
+      apiKey: 'custom-api-key',
+      variables: {
+        baseUrl: 'https://api.custom.com', // Duplicate entry
+        apiKey: 'custom-api-key',          // Duplicate entry
+        customVar: 'customValue'
+      }
+    });
+
+    const resDetailed = vs55.resolveVariablesDetailed(undefined, 'TestEnv');
+    const baseUrlInherited = resDetailed.inherited.filter(v => v.key === 'baseUrl' && v.source === 'environment');
+    assert.strictEqual(baseUrlInherited.length, 1, 'Inherited variables must not contain duplicate baseUrl from the same environment');
+    assert.strictEqual(baseUrlInherited[0].isOverridden, undefined, 'Winning environment baseUrl must not be marked overridden');
+
+    const apiKeyInherited = resDetailed.inherited.filter(v => v.key === 'apiKey' && v.source === 'environment');
+    assert.strictEqual(apiKeyInherited.length, 1, 'Inherited variables must not contain duplicate apiKey from the same environment');
+
+    // 3. Verify Active Environment clearing and persistence (does NOT revert to 'Local')
+    const rawStateCleared = {
+      profiles: [{ id: 'p1', name: 'P1', auth: { type: 'none' }, variables: {}, headers: {} }],
+      environments: {
+        Local: { id: 'env-local', baseUrl: 'https://jsonplaceholder.typicode.com', variables: {} },
+        Prod: { id: 'env-prod', baseUrl: 'https://api.prod.com', variables: {} }
+      },
+      collections: [],
+      activeProfileId: 'p1',
+      activeEnvironmentName: '' // Explicitly cleared by user
+    };
+    const normCleared = sm55.normalizeState(rawStateCleared);
+    assert.strictEqual(normCleared.activeEnvironmentName, undefined, 'Explicitly cleared activeEnvironmentName must remain undefined and NOT revert to Local');
+
+    const rawStateProd = {
+      ...rawStateCleared,
+      activeEnvironmentName: 'Prod'
+    };
+    const normProd = sm55.normalizeState(rawStateProd);
+    assert.strictEqual(normProd.activeEnvironmentName, 'Prod', 'Explicitly selected active environment must persist');
+
+    // 4. Verify Global Settings Panel renders hierarchical environments and tab preservation
+    const sampleState55 = {
+      ...normCleared,
+      environments: {
+        RootEnv: { id: 'root-1', name: 'RootEnv', baseUrl: 'https://root.com' },
+        ChildEnv: { id: 'child-1', name: 'ChildEnv', inheritsFrom: 'RootEnv', baseUrl: '' }
+      }
+    };
+    const html55 = getGlobalSettingsPanelHtml(sampleState55, [], 'baseurl');
+    assert(html55.includes('↳ ChildEnv'), 'Global Settings panel must format child environments with ↳ hierarchy');
+    assert(html55.includes('activeTab: currentActiveTab'), 'Global Settings panel must submit current activeTab in save payload');
+
+    console.log('✓ Action Bar Decluttering, Active Environment Persistence & Variable Deduplication verified');
+  }
+
+  // ==========================================
+  // Test Suite 56: Profile Safety Guards & Touch Points, Warnings & Full-Height Live Body Editor
+  // ==========================================
+  {
+    // 1. Profile Safety Guards configuration in state manager
+    const prodProfile = {
+      id: 'profile-prod-guard',
+      name: 'Production Guarded',
+      color: '#ef4444',
+      auth: { type: 'none' },
+      variables: {},
+      headers: {},
+      guards: {
+        enabled: true,
+        warnBeforeSend: true,
+        warnMessage: 'CRITICAL: You are targeting the Production profile!',
+        blockedMethods: ['DELETE', 'PUT', 'PATCH'],
+        requireKeywordConfirmation: true,
+        confirmationKeyword: 'PRODUCTION'
+      }
+    };
+
+    const baseState = stateManager.getState();
+    const stateWithGuards = {
+      ...baseState,
+      profiles: [...baseState.profiles, prodProfile],
+      activeProfileId: 'profile-prod-guard'
+    };
+
+    // Verify normalization preserves guards
+    const normalizedWithGuards = stateManager.normalizeState(stateWithGuards);
+    const normalizedProd = normalizedWithGuards.profiles.find(p => p.id === 'profile-prod-guard');
+    assert(normalizedProd, 'Guarded profile must be present after normalization');
+    assert(normalizedProd.guards, 'Profile guards must be preserved after normalization');
+    assert.strictEqual(normalizedProd.guards.enabled, true, 'Guards enabled must be true');
+    assert.strictEqual(normalizedProd.guards.warnBeforeSend, true, 'warnBeforeSend must be true');
+    assert.deepStrictEqual(normalizedProd.guards.blockedMethods, ['DELETE', 'PUT', 'PATCH'], 'blockedMethods must match');
+    assert.strictEqual(normalizedProd.guards.requireKeywordConfirmation, true, 'requireKeywordConfirmation must be true');
+    assert.strictEqual(normalizedProd.guards.confirmationKeyword, 'PRODUCTION', 'confirmationKeyword must match');
+
+    // 2. Request Panel HTML rendering: Live JSON syntax highlighter & Safety Guards badge
+    const reqPanelHtml = getRequestPanelHtml(
+      { method: 'DELETE', url: 'https://api.example.com/users/123' },
+      stateWithGuards
+    );
+    assert(reqPanelHtml.includes('code-editor-container'), 'Request Panel must render .code-editor-container');
+    assert(reqPanelHtml.includes('json-highlight-backdrop'), 'Request Panel must render #json-highlight-backdrop');
+    assert(reqPanelHtml.includes('json-line-numbers'), 'Request Panel must render #json-line-numbers gutter');
+    assert(reqPanelHtml.includes('profile-guard-badge'), 'Request Panel must render #profile-guard-badge');
+    assert(reqPanelHtml.includes('data-guards='), 'Profile option elements must embed data-guards attribute');
+
+    // Verify script integrity of the Request Panel with editor and guards
+    const scriptMatch = reqPanelHtml.match(/<script>([\s\S]*?)<\/script>/);
+    assert(scriptMatch, 'Script tag must be present in request panel HTML');
+    assert.doesNotThrow(() => {
+      new Function(scriptMatch[1]);
+    }, 'Client script in request panel HTML must be valid JavaScript');
+
+    // 3. Dedicated Settings Panel HTML rendering for Profile
+    const dedicatedProfileHtml = getSettingsPanelHtml(
+      'profile',
+      prodProfile,
+      prodProfile.name,
+      undefined,
+      [],
+      [],
+      []
+    );
+    assert(dedicatedProfileHtml.includes('🛡️ Safety Guards'), 'Dedicated profile settings must include Safety Guards tab button');
+    assert(dedicatedProfileHtml.includes('id="tab-guards"'), 'Dedicated profile settings must render #tab-guards section');
+    assert(dedicatedProfileHtml.includes('id="guard-enabled"'), 'Dedicated profile settings must render #guard-enabled toggle');
+    assert(dedicatedProfileHtml.includes('guard-method-cb'), 'Dedicated profile settings must render .guard-method-cb checkboxes');
+    assert(dedicatedProfileHtml.includes('id="guard-keyword"'), 'Dedicated profile settings must render #guard-keyword input');
+
+    // 4. Global Settings Panel HTML rendering for Profile
+    const globalSettingsHtml = getGlobalSettingsPanelHtml(
+      stateWithGuards,
+      [],
+      'profiles',
+      'profile-prod-guard'
+    );
+    assert(globalSettingsHtml.includes('data-subtab="subtab-guards"'), 'Global settings panel must render Safety Guards subtab button');
+    assert(globalSettingsHtml.includes('id="subtab-guards"'), 'Global settings panel must render #subtab-guards container');
+    assert(globalSettingsHtml.includes('id="guard-warn-send"'), 'Global settings panel must render #guard-warn-send input');
+    assert(globalSettingsHtml.includes('id="guard-warn-msg"'), 'Global settings panel must render #guard-warn-msg input');
+
+    console.log('✓ Profile Safety Guards & Touch Points, Warnings & Full-Height Live Body Editor verified');
+  }
+
+  // --- Suite 57: URL Preview Variable Resolution Parity & Collection Base URL Fallback with Disabled Environment Base URL ---
+  {
+    const mockStorage57 = new Map();
+    const mockCtx57 = {
+      workspaceState: {
+        get: (k) => mockStorage57.get(k),
+        update: (k, v) => { mockStorage57.set(k, v); return Promise.resolve(); }
+      }
+    };
+    const sm57 = new BlueByrdStateManager(mockCtx57);
+    const testState57 = sm57.createDefaultState();
+
+    // Setup: Collection with baseUrl = 'http://localhost:8080'
+    const col57 = {
+      id: 'col-algod',
+      name: 'Algod REST API v0.0.1',
+      baseUrl: 'http://localhost:8080',
+      baseUrlDisabled: false,
+      folders: [],
+      requests: [
+        {
+          id: 'req-health',
+          name: 'Health Check',
+          method: 'GET',
+          url: '{{baseUrl}}/health',
+          headers: {},
+          body: '',
+          bodyType: 'none',
+          variables: []
+        }
+      ]
+    };
+    testState57.collections = [col57];
+
+    // Setup: Environment with baseUrl = 'https://api.example.com', but baseUrlDisabled = true
+    testState57.environments['None'] = {
+      id: 'env-none',
+      name: 'None',
+      baseUrl: 'https://api.example.com',
+      baseUrlDisabled: true,
+      variables: {},
+      headers: {},
+      notes: ''
+    };
+    sm57.save(testState57);
+
+    const vs57 = new VariableService(sm57);
+
+    // 1. Resolve variables with collection and disabled environment
+    const details57 = vs57.resolveVariablesDetailed(
+      undefined,
+      'None',
+      'col-algod',
+      undefined,
+      [],
+      'auto'
+    );
+
+    // Assert backend resolved dictionary truth
+    assert.strictEqual(details57.resolved['baseUrl'], 'http://localhost:8080', 'Active resolved baseUrl must be collection baseUrl when env baseUrl is disabled');
+    assert.strictEqual(details57.resolved['collectionBaseUrl'], 'http://localhost:8080', 'collectionBaseUrl must resolve to collection baseUrl');
+
+    // Assert collection baseUrl is NOT marked as overridden
+    const colItem = details57.inherited.find(i => i.source === 'collection' && i.key === 'baseUrl');
+    assert(colItem, 'Collection baseUrl must be present in inherited list');
+    assert.strictEqual(colItem.value, 'http://localhost:8080', 'Collection baseUrl value must match');
+    assert.strictEqual(colItem.isOverridden, undefined, 'Collection baseUrl must NOT be marked overridden when environment baseUrl is disabled');
+
+    // Assert environment baseUrl IS marked as overridden/disabled
+    const envItem = details57.inherited.find(i => i.source === 'environment' && i.key === 'baseUrl');
+    assert(envItem, 'Environment baseUrl must be present in inherited list');
+    assert.strictEqual(envItem.value, 'https://api.example.com', 'Environment baseUrl value must match');
+    assert.strictEqual(envItem.isOverridden, true, 'Environment baseUrl must be marked as overridden/disabled');
+
+    // 2. Request Panel HTML generation with initialResolvedVars
+    const reqHtml57 = getRequestPanelHtml(
+      {
+        requestId: 'req-health',
+        name: 'Health Check',
+        method: 'GET',
+        url: '{{baseUrl}}/health',
+        collection: 'Algod REST API v0.0.1',
+        environment: 'None'
+      },
+      testState57,
+      details57.inherited,
+      [],
+      [],
+      details57.resolved
+    );
+
+    // Assert initialResolvedVars is embedded into client script
+    assert(reqHtml57.includes('initialResolvedVars'), 'Request panel HTML must contain initialResolvedVars');
+    assert(reqHtml57.includes('http://localhost:8080'), 'Request panel HTML must contain resolved collection baseUrl');
+
+    // Validate client-side script syntax
+    const scriptMatch57 = reqHtml57.match(/<script>([\s\S]*?)<\/script>/);
+    assert(scriptMatch57 && scriptMatch57[1], 'Must contain <script> tag');
+    assert.doesNotThrow(() => {
+      new Function(scriptMatch57[1]);
+    }, 'Client script in request panel HTML must be valid JavaScript');
+
+    // 3. Simulate client-side variable resolution to ensure {{baseUrl}}/health resolves without UNRESOLVED warning
+    // In client getActiveVariableMap:
+    const clientVarMap = {};
+    for (const item of details57.inherited) {
+      if (!item.isOverridden && item.key && item.value !== undefined) {
+        clientVarMap[item.key] = { value: String(item.value), source: item.source };
+      }
+    }
+    // Fallback:
+    for (const k in details57.resolved) {
+      if (!clientVarMap[k]) {
+        clientVarMap[k] = { value: String(details57.resolved[k]), source: 'Inherited' };
+      }
+    }
+
+    assert(clientVarMap['baseUrl'], 'clientVarMap must contain baseUrl');
+    assert.strictEqual(clientVarMap['baseUrl'].value, 'http://localhost:8080', 'clientVarMap baseUrl must be http://localhost:8080');
+
+    // URL resolution
+    const urlPattern = /\{\{([a-zA-Z0-9_.:$-]+)\}\}/g;
+    const testUrl = '{{baseUrl}}/health';
+    const resolvedUrl = testUrl.replace(urlPattern, (m, k) => clientVarMap[k] ? clientVarMap[k].value : m);
+    assert.strictEqual(resolvedUrl, 'http://localhost:8080/health', 'URL must resolve cleanly to http://localhost:8080/health');
+    assert(!resolvedUrl.includes('{{'), 'No unresolved {{tokens}} should remain in resolved URL');
+
+    console.log('✓ URL Preview Variable Resolution Parity & Collection Base URL Fallback verified');
+  }
+
+  console.log('\nAll 57 verification test suites passed successfully! 🎉');
   process.exit(0);
 })().catch(err => {
   console.error('Async test suite failure:', err);

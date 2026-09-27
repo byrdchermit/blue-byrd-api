@@ -9,6 +9,19 @@ const METHOD_COLORS: Record<string, string> = {
   DELETE: 'charts.red',
 };
 
+export function getProfileIcon(color?: string, isActive?: boolean): vscode.Uri {
+  const hex = color || '#3b82f6';
+  const check = isActive
+    ? `<path d="M4.5 8 L7 10.5 L11.5 5" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`
+    : '';
+  const stroke = isActive ? `stroke="#ffffff" stroke-width="1.5"` : '';
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="${hex}" ${stroke}/>${check}</svg>`;
+  if (vscode.Uri && typeof vscode.Uri.parse === 'function') {
+    return vscode.Uri.parse(`data:image/svg+xml;utf8,${encodeURIComponent(svg)}`);
+  }
+  return { scheme: 'data', path: svg, toString: () => svg } as any;
+}
+
 export class BlueByrdTreeItem extends vscode.TreeItem {
   constructor(
     public readonly label: string,
@@ -70,7 +83,7 @@ export class BlueByrdTreeItem extends vscode.TreeItem {
         this.contextValue = 'byrdsnest.section.history';
       }
     } else if (kind === 'profile') {
-      this.iconPath = itemId === 'global' ? new vscode.ThemeIcon('globe') : new vscode.ThemeIcon('person');
+      this.iconPath = itemId === 'global' ? new vscode.ThemeIcon('globe') : getProfileIcon(undefined, false);
       this.contextValue = itemId === 'global' ? 'byrdsnest.profile.global' : 'byrdsnest.profile';
       if (customDescription === undefined) {
         this.description = 'profile';
@@ -78,10 +91,13 @@ export class BlueByrdTreeItem extends vscode.TreeItem {
       this.tooltip = `Profile: ${label}`;
     } else if (kind === 'environment') {
       const isParent = children.length > 0;
-      this.iconPath = isParent ? new vscode.ThemeIcon('server-process') : new vscode.ThemeIcon('globe');
+      const isChild = !!parentId;
+      this.iconPath = isParent
+        ? new vscode.ThemeIcon('server-process')
+        : (isChild ? new vscode.ThemeIcon('arrow-subwards') : new vscode.ThemeIcon('server-environment'));
       this.contextValue = isParent ? 'byrdsnest.environment.parent' : 'byrdsnest.environment';
       if (customDescription === undefined) {
-        this.description = isParent ? `Parent (${children.length})` : 'env';
+        this.description = isParent ? `Parent (${children.length})` : (isChild ? 'child' : 'Root');
       }
       this.tooltip = `Environment: ${label}`;
     } else if (kind === 'collection') {

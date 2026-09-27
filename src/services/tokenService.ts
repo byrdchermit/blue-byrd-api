@@ -109,6 +109,19 @@ export class TokenService {
     }
   }
 
+  public async pruneAllExpiredTokens(): Promise<number> {
+    let prunedCount = 0;
+    const now = Date.now();
+    for (const [profileId, tokens] of this.memoryStore.entries()) {
+      const alive = tokens.filter((t) => t.expiresAt > now || !!t.refreshToken);
+      if (alive.length !== tokens.length) {
+        prunedCount += (tokens.length - alive.length);
+        await this.setTokens(profileId, alive);
+      }
+    }
+    return prunedCount;
+  }
+
   public async getValidToken(profileId: string, envIdOrName?: string): Promise<StoredToken | undefined> {
     const tokens = await this.getTokens(profileId);
     const now = Date.now();

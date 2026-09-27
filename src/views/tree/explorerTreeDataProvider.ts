@@ -72,7 +72,7 @@ export class BlueByrdExplorerTreeDataProvider
         children,
         {
           title: 'Edit Profile Settings',
-          command: 'blueByrdApiClient.editProfile',
+          command: 'byrdsnestApiClient.editProfile',
           arguments: [{ id: p.id, name: p.name }],
         },
         desc,
@@ -175,7 +175,7 @@ export class BlueByrdExplorerTreeDataProvider
         children,
         {
           title: 'Edit Collection Settings',
-          command: 'blueByrdApiClient.editCollection',
+          command: 'byrdsnestApiClient.editCollection',
           arguments: [{ id: col.id, name: col.name }],
         },
         `${children.length} ${children.length === 1 ? 'item' : 'items'}`
@@ -252,14 +252,22 @@ export class BlueByrdExplorerTreeDataProvider
 
       const isActive = activeEnvName === name || (env.id && activeEnvName === env.id);
 
+      const isParent = childTreeItems.length > 0;
+      const isChild = !!parentName;
+
       const parts: string[] = [];
       if (isActive) {
         parts.push('✔ Active');
       }
-      if (childTreeItems.length > 0) {
+      if (isParent) {
         parts.push(`Parent (${childTreeItems.length})`);
-      } else if (parentName) {
+      } else if (isChild) {
         parts.push(`inherits: ${parentName}`);
+      } else {
+        parts.push('Root');
+      }
+      if (!env.baseUrlDisabled && env.baseUrl) {
+        parts.push(env.baseUrl);
       }
       const desc = parts.join(' • ');
 
@@ -272,16 +280,24 @@ export class BlueByrdExplorerTreeDataProvider
         childTreeItems,
         {
           title: 'Edit Environment Settings',
-          command: 'blueByrdApiClient.editEnvironment',
+          command: 'byrdsnestApiClient.editEnvironment',
           arguments: [{ id: env.id, name }],
         },
         desc || undefined
       );
 
-      if (isActive) {
-        item.iconPath = childTreeItems.length > 0
-          ? new vscode.ThemeIcon('server-process')
-          : new vscode.ThemeIcon('pass');
+      if (isParent) {
+        item.iconPath = isActive
+          ? new vscode.ThemeIcon('server-process', new vscode.ThemeColor('charts.green'))
+          : new vscode.ThemeIcon('server-process');
+      } else if (isChild) {
+        item.iconPath = isActive
+          ? new vscode.ThemeIcon('arrow-subwards', new vscode.ThemeColor('charts.green'))
+          : new vscode.ThemeIcon('arrow-subwards');
+      } else {
+        item.iconPath = isActive
+          ? new vscode.ThemeIcon('server-environment', new vscode.ThemeColor('charts.green'))
+          : new vscode.ThemeIcon('server-environment');
       }
 
       return item;
@@ -302,7 +318,7 @@ export class BlueByrdExplorerTreeDataProvider
         [],
         {
           title: `Inspect History: ${label}`,
-          command: 'blueByrdApiClient.openHistoryPanel',
+          command: 'byrdsnestApiClient.openHistoryPanel',
           arguments: [{ historyId: h.id }],
         }
       );
@@ -317,7 +333,7 @@ export class BlueByrdExplorerTreeDataProvider
       historyItems,
       {
         title: 'Open History Inspector',
-        command: 'blueByrdApiClient.openHistoryPanel',
+        command: 'byrdsnestApiClient.openHistoryPanel',
         arguments: [],
       }
     );
@@ -361,7 +377,7 @@ export class BlueByrdExplorerTreeDataProvider
       [],
       {
         title: `Open ${req.name}`,
-        command: 'blueByrdApiClient.openRequestPanel',
+        command: 'byrdsnestApiClient.openRequestPanel',
         arguments: [context],
       }
     );

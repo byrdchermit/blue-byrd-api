@@ -61,9 +61,11 @@ export class BlueByrdCollectionsTreeProvider
     treeDataTransfer: vscode.DataTransfer,
     token: vscode.CancellationToken
   ): void {
+    const draggable = source.filter((s) => s && s.kind !== 'active-filter' && s.itemId !== 'active-profile-banner');
+    if (draggable.length === 0) return;
     treeDataTransfer.set(
       'application/vnd.code.tree.bluebyrdcollections',
-      new vscode.DataTransferItem(source)
+      new vscode.DataTransferItem(draggable)
     );
   }
 
@@ -99,27 +101,33 @@ export class BlueByrdCollectionsTreeProvider
     let stateModified = false;
     let lastSummary = '';
 
+    let effectiveTarget = target;
+    if (effectiveTarget && (effectiveTarget.itemId === 'active-profile-banner' || effectiveTarget.kind === 'active-filter')) {
+      const firstCol = this.state.collections[0];
+      effectiveTarget = firstCol ? { kind: 'collection', itemId: firstCol.id, label: firstCol.name } as any : undefined;
+    }
+
     for (const source of sourceItems) {
       if (!source || !source.itemId) continue;
-      if (target && target.itemId === source.itemId) continue;
+      if (effectiveTarget && effectiveTarget.itemId === source.itemId) continue;
 
       // 1. Dragging a COLLECTION
       if (source.kind === 'collection') {
-        if (!target) {
+        if (!effectiveTarget) {
           // Dropped on blank canvas: move collection to bottom
           if (this.stateManager.moveCollectionToEnd(source.itemId)) {
             stateModified = true;
             lastSummary = `Moved '${source.label}' to the end of collections`;
           }
-        } else if (target.kind === 'collection' && target.itemId) {
+        } else if (effectiveTarget.kind === 'collection' && effectiveTarget.itemId) {
           // Dropped onto another collection: reorder before it
-          if (this.stateManager.reorderCollection(source.itemId, target.itemId, 'before')) {
+          if (this.stateManager.reorderCollection(source.itemId, effectiveTarget.itemId, 'before')) {
             stateModified = true;
-            lastSummary = `Reordered '${source.label}' before '${target.label}'`;
+            lastSummary = `Reordered '${source.label}' before '${effectiveTarget.label}'`;
           }
-        } else if (target.kind === 'folder' || target.kind === 'request') {
+        } else if (effectiveTarget.kind === 'folder' || effectiveTarget.kind === 'request') {
           // Dropped onto item in another collection: reorder relative to target's collection
-          const targetColId = target.requestContext?.collectionId || target.parentId;
+          const targetColId = effectiveTarget.requestContext?.collectionId || effectiveTarget.parentId;
           if (targetColId && targetColId !== source.itemId) {
             if (this.stateManager.reorderCollection(source.itemId, targetColId, 'before')) {
               stateModified = true;
@@ -253,7 +261,7 @@ export class BlueByrdCollectionsTreeProvider
       return [emptyItem];
     }
 
-    return visibleCols.map((col) => {
+    const colItems = visibleCols.map((col) => {
       const folderMap = new Map<string, BlueByrdTreeItem>();
       const rootRequests: BlueByrdTreeItem[] = [];
 
@@ -310,6 +318,8 @@ export class BlueByrdCollectionsTreeProvider
           : vscode.TreeItemCollapsibleState.None
       );
     });
+
+    return colItems;
   }
 
   private buildRequestItem(
