@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3.3] - 2026-09-27
+
+### Added
+- **Collapsible Objects & Arrays in Response Body**:
+  - Interactive fold/unfold chevrons on all JSON objects and arrays in the response viewer with smooth SVG transitions.
+  - Informative collapsed badges summarizing item and key counts (e.g. `{ ... 4 keys ... }`, `[ ... 25 items ... ]`).
+  - Added dedicated **Collapse All** and **Expand All** toolbar actions in the response header.
+  - <kbd>Alt</kbd> + click on any chevron recursively collapses or expands all nested descendant objects and arrays in one gesture.
+  - Full keyboard accessibility: press <kbd>Enter</kbd> or <kbd>Space</kbd> on any node header to toggle folding.
+  - Preserved copy & editor fidelity: copying or opening in editor always exports the complete formatted JSON, unaffected by collapsed UI state.
+  - Subtle tree indentation guide lines matching native VS Code editor styling.
+
+### Fixed
+- **Cleaned Up Collection Base URL Handling**:
+  - Eliminated redundant duplicate `{{collectionBaseUrl}}` entry in the Inherited Variables inspector when a collection defines a base URL.
+  - Eliminated redundant duplicate `{{envBaseUrl}}` entry in the environment section of the Inherited Variables inspector.
+  - Preserved full template resolution truth: requests can still interpolate `{{collectionBaseUrl}}` and `{{envBaseUrl}}` whenever needed.
+
+---
+
 ## [0.3.2] - 2026-09-27
 
 ### Added

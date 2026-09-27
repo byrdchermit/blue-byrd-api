@@ -1055,10 +1055,111 @@ export function getRequestPanelHtml(
       font-size: 12px;
       white-space: pre-wrap;
       line-height: 1.5;
+      overflow: auto;
+    }
+    .json-tree-root {
+      font-family: Consolas, Monaco, "Courier New", monospace;
+      font-size: 12px;
+      line-height: 1.55;
+    }
+    .json-line,
+    .json-header,
+    .json-closing {
+      position: relative;
+      padding-left: 18px;
+      min-height: 18px;
+      display: flex;
+      align-items: baseline;
+      flex-wrap: wrap;
+    }
+    .json-header {
+      cursor: pointer;
+    }
+    .json-toggle {
+      position: absolute;
+      left: 0;
+      top: 1px;
+      width: 16px;
+      height: 16px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      background: none;
+      border: none;
+      padding: 0;
+      color: var(--muted);
+      user-select: none;
+      -webkit-user-select: none;
+      border-radius: 2px;
+    }
+    .json-toggle:hover {
+      color: var(--text);
+      background: rgba(128, 128, 128, 0.15);
+    }
+    .json-chevron {
+      width: 10px;
+      height: 10px;
+      fill: currentColor;
+      transition: transform 0.15s ease-in-out;
+      transform-origin: center;
+    }
+    .json-collapsible.collapsed > .json-header > .json-toggle > .json-chevron {
+      transform: rotate(-90deg);
+    }
+    .json-collapsible.collapsed > .json-children {
+      display: none !important;
+    }
+    .json-collapsible.collapsed > .json-closing {
+      display: none !important;
+    }
+    .json-children {
+      position: relative;
+      margin-left: 9px;
+      padding-left: 9px;
+      border-left: 1px solid rgba(128, 128, 128, 0.2);
+    }
+    .json-children:hover {
+      border-left-color: rgba(128, 128, 128, 0.45);
+    }
+    .json-collapsed-preview {
+      display: none;
+      background: var(--vscode-badge-background, rgba(128, 128, 128, 0.2));
+      color: var(--vscode-badge-foreground, var(--text));
+      padding: 0 5px;
+      margin-left: 6px;
+      border-radius: 3px;
+      font-size: 11px;
+      cursor: pointer;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .json-collapsed-preview:hover {
+      filter: brightness(1.2);
+    }
+    .json-collapsible.collapsed > .json-header > .json-collapsed-preview {
+      display: inline-block;
+    }
+    .json-collapsed-comma {
+      display: none;
+    }
+    .json-collapsible.collapsed > .json-header > .json-collapsed-comma {
+      display: inline;
     }
     .json-key {
       color: var(--vscode-symbolIcon-propertyForeground, #9cdcfe);
       font-weight: 600;
+    }
+    .json-colon {
+      color: var(--text);
+      margin-right: 4px;
+    }
+    .json-bracket {
+      color: var(--text);
+      font-weight: 500;
+    }
+    .json-comma {
+      color: var(--text);
     }
     .json-string {
       color: var(--vscode-debugTokenExpression-string, #ce9178);
@@ -1814,6 +1915,8 @@ export function getRequestPanelHtml(
             <span id="resp-size" class="meta-tag"></span>
           </div>
           <div class="response-actions" style="display: flex; align-items: center; gap: 6px;">
+            <button id="btn-collapse-all" class="btn btn-secondary" style="font-size: 11px; padding: 2px 8px; display: none;" title="Collapse all objects and arrays">Collapse All</button>
+            <button id="btn-expand-all" class="btn btn-secondary" style="font-size: 11px; padding: 2px 8px; display: none;" title="Expand all objects and arrays">Expand All</button>
             <button id="btn-format-resp" class="btn btn-secondary" style="font-size: 11px; padding: 2px 8px;" title="Toggle Raw / Formatted Colorized JSON">Raw</button>
             <button id="btn-copy-resp" class="btn btn-secondary" style="font-size: 11px; padding: 2px 8px;" title="Copy Response Body">Copy</button>
             <button id="btn-open-editor" class="btn btn-secondary" style="font-size: 11px; padding: 2px 8px;" title="Open Response in VS Code Editor (Monaco)">↗ Editor</button>
@@ -3699,6 +3802,11 @@ export function getRequestPanelHtml(
       statusPill.className = 'pill';
       statusPill.textContent = 'Sending...';
 
+      const btnCollapseAll = document.getElementById('btn-collapse-all');
+      const btnExpandAll = document.getElementById('btn-expand-all');
+      if (btnCollapseAll) btnCollapseAll.style.display = 'none';
+      if (btnExpandAll) btnExpandAll.style.display = 'none';
+
       document.getElementById('resp-body-text').textContent = 'Dispatching request...';
       vscode.postMessage({
         type: 'sendRequest',
@@ -3729,6 +3837,83 @@ export function getRequestPanelHtml(
     // Response Body Syntax Highlighting & Formatting
     let lastResponseBodyRaw = '';
     let isFormattedView = true;
+
+    function escapeJsonHtml(str) {
+      if (typeof str !== 'string') str = String(str);
+      return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    const CHEVRON_SVG = '<svg class="json-chevron" viewBox="0 0 16 16"><path d="M4.646 6.646a.5.5 0 0 1 .708 0L8 9.293l2.646-2.647a.5.5 0 0 1 .708.708l-3 3a.5.5 0 0 1-.708 0l-3-3a.5.5 0 0 1 0-.708z"/></svg>';
+
+    function buildJsonTree(val, key, isLast) {
+      const keyHtml = key !== undefined
+        ? '<span class="json-key">' + escapeJsonHtml(JSON.stringify(key)) + '</span><span class="json-colon">:</span>'
+        : '';
+      const commaHtml = isLast ? '' : '<span class="json-comma">,</span>';
+
+      if (val === null) {
+        return '<div class="json-line">' + keyHtml + '<span class="json-null">null</span>' + commaHtml + '</div>';
+      }
+      if (typeof val === 'boolean') {
+        return '<div class="json-line">' + keyHtml + '<span class="json-boolean">' + val + '</span>' + commaHtml + '</div>';
+      }
+      if (typeof val === 'number') {
+        return '<div class="json-line">' + keyHtml + '<span class="json-number">' + val + '</span>' + commaHtml + '</div>';
+      }
+      if (typeof val === 'string') {
+        return '<div class="json-line">' + keyHtml + '<span class="json-string">' + escapeJsonHtml(JSON.stringify(val)) + '</span>' + commaHtml + '</div>';
+      }
+      if (Array.isArray(val)) {
+        const len = val.length;
+        if (len === 0) {
+          return '<div class="json-line">' + keyHtml + '<span class="json-bracket">[]</span>' + commaHtml + '</div>';
+        }
+        const countLabel = len + (len === 1 ? ' item' : ' items');
+        let childrenHtml = '';
+        for (let i = 0; i < len; i++) {
+          childrenHtml += buildJsonTree(val[i], undefined, i === len - 1);
+        }
+        return '<div class="json-collapsible" data-type="array">' +
+          '<div class="json-header" role="button" tabindex="0" aria-expanded="true">' +
+            '<button type="button" class="json-toggle" tabindex="-1" title="Click to collapse / expand (Alt+click to toggle all)">' + CHEVRON_SVG + '</button>' +
+            keyHtml + '<span class="json-bracket">[</span>' +
+            '<span class="json-collapsed-preview" title="Click to expand">... ' + countLabel + ' ... ]</span>' +
+            (commaHtml ? '<span class="json-collapsed-comma">' + commaHtml + '</span>' : '') +
+          '</div>' +
+          '<div class="json-children">' + childrenHtml + '</div>' +
+          '<div class="json-closing"><span class="json-bracket">]</span>' + commaHtml + '</div>' +
+        '</div>';
+      }
+      if (typeof val === 'object') {
+        const keys = Object.keys(val);
+        const len = keys.length;
+        if (len === 0) {
+          return '<div class="json-line">' + keyHtml + '<span class="json-bracket">{}</span>' + commaHtml + '</div>';
+        }
+        const countLabel = len + (len === 1 ? ' key' : ' keys');
+        let childrenHtml = '';
+        for (let i = 0; i < len; i++) {
+          const k = keys[i];
+          childrenHtml += buildJsonTree(val[k], k, i === len - 1);
+        }
+        return '<div class="json-collapsible" data-type="object">' +
+          '<div class="json-header" role="button" tabindex="0" aria-expanded="true">' +
+            '<button type="button" class="json-toggle" tabindex="-1" title="Click to collapse / expand (Alt+click to toggle all)">' + CHEVRON_SVG + '</button>' +
+            keyHtml + '<span class="json-bracket">{</span>' +
+            '<span class="json-collapsed-preview" title="Click to expand">... ' + countLabel + ' ... }</span>' +
+            (commaHtml ? '<span class="json-collapsed-comma">' + commaHtml + '</span>' : '') +
+          '</div>' +
+          '<div class="json-children">' + childrenHtml + '</div>' +
+          '<div class="json-closing"><span class="json-bracket">}</span>' + commaHtml + '</div>' +
+        '</div>';
+      }
+      return '<div class="json-line">' + keyHtml + escapeJsonHtml(String(val)) + commaHtml + '</div>';
+    }
 
     function highlightJson(jsonStr) {
       if (!jsonStr || typeof jsonStr !== 'string') return '';
@@ -3764,8 +3949,13 @@ export function getRequestPanelHtml(
       if (!bodyPre) return;
       lastResponseBodyRaw = bodyText || '';
 
+      const btnCollapseAll = document.getElementById('btn-collapse-all');
+      const btnExpandAll = document.getElementById('btn-expand-all');
+
       if (!bodyText) {
         bodyPre.innerHTML = '<span style="color: var(--muted); font-style: italic;">(Empty response)</span>';
+        if (btnCollapseAll) btnCollapseAll.style.display = 'none';
+        if (btnExpandAll) btnExpandAll.style.display = 'none';
         return;
       }
 
@@ -3775,11 +3965,97 @@ export function getRequestPanelHtml(
       } catch (e) {}
 
       if (parsed !== null && isFormattedView) {
-        const formatted = JSON.stringify(parsed, null, 2);
-        bodyPre.innerHTML = highlightJson(formatted);
+        const isContainer = parsed !== null && typeof parsed === 'object';
+        const hasItems = isContainer && (Array.isArray(parsed) ? parsed.length > 0 : Object.keys(parsed).length > 0);
+        if (btnCollapseAll) btnCollapseAll.style.display = hasItems ? 'inline-block' : 'none';
+        if (btnExpandAll) btnExpandAll.style.display = hasItems ? 'inline-block' : 'none';
+
+        if (bodyText.length > 2000000) {
+          // Fallback to flat syntax coloring for massive payloads (>2MB)
+          const formatted = JSON.stringify(parsed, null, 2);
+          bodyPre.innerHTML = highlightJson(formatted);
+        } else {
+          bodyPre.innerHTML = '<div class="json-tree-root">' + buildJsonTree(parsed, undefined, true) + '</div>';
+        }
       } else {
+        if (btnCollapseAll) btnCollapseAll.style.display = 'none';
+        if (btnExpandAll) btnExpandAll.style.display = 'none';
         bodyPre.textContent = bodyText;
       }
+    }
+
+    // Interactive collapsing/expanding via event delegation
+    const bodyPreElem = document.getElementById('resp-body-text');
+    if (bodyPreElem) {
+      bodyPreElem.addEventListener('click', (e) => {
+        const toggle = e.target.closest('.json-toggle');
+        const preview = e.target.closest('.json-collapsed-preview');
+        const bracket = e.target.closest('.json-bracket');
+
+        if (toggle || preview || bracket) {
+          const collapsible = (toggle || preview || bracket).closest('.json-collapsible');
+          if (collapsible) {
+            const willCollapse = preview ? false : !collapsible.classList.contains('collapsed');
+            collapsible.classList.toggle('collapsed', willCollapse);
+            const hdr = collapsible.querySelector(':scope > .json-header');
+            if (hdr) {
+              hdr.setAttribute('aria-expanded', String(!willCollapse));
+            }
+            if (e.altKey) {
+              const descendants = collapsible.querySelectorAll('.json-collapsible');
+              descendants.forEach(d => {
+                d.classList.toggle('collapsed', willCollapse);
+                const subHdr = d.querySelector(':scope > .json-header');
+                if (subHdr) subHdr.setAttribute('aria-expanded', String(!willCollapse));
+              });
+            }
+            e.stopPropagation();
+          }
+        }
+      });
+
+      bodyPreElem.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          const header = e.target.closest('.json-header');
+          if (header) {
+            const collapsible = header.closest('.json-collapsible');
+            if (collapsible) {
+              const willCollapse = !collapsible.classList.contains('collapsed');
+              collapsible.classList.toggle('collapsed', willCollapse);
+              header.setAttribute('aria-expanded', String(!willCollapse));
+              e.preventDefault();
+              e.stopPropagation();
+            }
+          }
+        }
+      });
+    }
+
+    // Collapse All / Expand All actions
+    const btnCollapseAllAction = document.getElementById('btn-collapse-all');
+    if (btnCollapseAllAction) {
+      btnCollapseAllAction.addEventListener('click', () => {
+        if (!bodyPreElem) return;
+        const collapsibles = bodyPreElem.querySelectorAll('.json-collapsible');
+        collapsibles.forEach(el => {
+          el.classList.add('collapsed');
+          const hdr = el.querySelector(':scope > .json-header');
+          if (hdr) hdr.setAttribute('aria-expanded', 'false');
+        });
+      });
+    }
+
+    const btnExpandAllAction = document.getElementById('btn-expand-all');
+    if (btnExpandAllAction) {
+      btnExpandAllAction.addEventListener('click', () => {
+        if (!bodyPreElem) return;
+        const collapsibles = bodyPreElem.querySelectorAll('.json-collapsible');
+        collapsibles.forEach(el => {
+          el.classList.remove('collapsed');
+          const hdr = el.querySelector(':scope > .json-header');
+          if (hdr) hdr.setAttribute('aria-expanded', 'true');
+        });
+      });
     }
 
     // Toggle Formatted / Raw view

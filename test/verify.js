@@ -2288,7 +2288,8 @@ console.log('✓ Request panel script integrity & syntax validation passed');
     // Verify Check for Updates description displays current installed version
     const updateToolItem = toolItems.find(t => t.label === 'Check for Updates...');
     assert(updateToolItem, 'Check for Updates tool item must exist');
-    assert.strictEqual(updateToolItem.description, 'v0.3.2', 'Check for Updates description must match current version v0.3.2');
+    const currentPkgVersion43 = JSON.parse(fs.readFileSync(path.join(__dirname, '../package.json'), 'utf8')).version;
+    assert.strictEqual(updateToolItem.description, 'v' + currentPkgVersion43, `Check for Updates description must match current version v${currentPkgVersion43}`);
 
     // Verify coordinator compatibility
     const coordinator43 = new BlueByrdTreeCoordinator(
@@ -3722,7 +3723,79 @@ console.log('✓ Request panel script integrity & syntax validation passed');
     console.log('✓ Profile Settings Persistence, Dirty Tab Tracking & Activity Bar Icon verified');
   }
 
-  console.log('\nAll 58 verification test suites passed successfully! 🎉');
+  // ==========================================
+  // Test 59: Collapsible Response Body Objects & Arrays, Cleaned CollectionBaseUrl
+  // ==========================================
+  {
+    // 1. Verify requestPanelHtml.ts has collapsible JSON tree structures and controls
+    const reqHtml = fs.readFileSync(path.join(__dirname, '../src/views/panels/requestPanelHtml.ts'), 'utf8');
+    assert(reqHtml.includes('buildJsonTree('), 'requestPanelHtml must define buildJsonTree function');
+    assert(reqHtml.includes('json-collapsible'), 'requestPanelHtml must include json-collapsible CSS and markup');
+    assert(reqHtml.includes('json-toggle'), 'requestPanelHtml must include json-toggle button with chevron');
+    assert(reqHtml.includes('json-collapsed-preview'), 'requestPanelHtml must include json-collapsed-preview badge');
+    assert(reqHtml.includes('btn-collapse-all'), 'requestPanelHtml must include btn-collapse-all button');
+    assert(reqHtml.includes('btn-expand-all'), 'requestPanelHtml must include btn-expand-all button');
+    assert(reqHtml.includes('e.altKey'), 'requestPanelHtml must support Alt+click recursive toggle');
+
+    // 2. Verify VariableService eliminates redundant collectionBaseUrl and envBaseUrl in inherited list
+    const varSM59 = new BlueByrdStateManager(mockContext);
+    const varService59 = new VariableService(varSM59);
+
+    const testState59 = {
+      activeProfileId: 'all',
+      activeEnvironmentName: 'Production Cloud',
+      profiles: [{ id: 'prof-59', name: 'Profile 59' }],
+      environments: {
+        'Production Cloud': {
+          id: 'env-prod-59',
+          name: 'Production Cloud',
+          baseUrl: 'https://api.production.com',
+          variables: {}
+        }
+      },
+      collections: [
+        {
+          id: 'col-algod-59',
+          name: 'Algod REST API',
+          baseUrl: 'http://localhost:8080',
+          variables: { customVar: '123' },
+          folders: [],
+          requests: []
+        }
+      ],
+      history: []
+    };
+
+    varSM59.save(testState59);
+
+    const details59 = varService59.resolveVariablesDetailed(undefined, 'Production Cloud', 'col-algod-59');
+
+    // In resolved dictionary: collectionBaseUrl, envBaseUrl, and baseUrl must ALL be available
+    assert.strictEqual(details59.resolved['collectionBaseUrl'], 'http://localhost:8080', 'collectionBaseUrl must resolve in template dictionary');
+    assert.strictEqual(details59.resolved['envBaseUrl'], 'https://api.production.com', 'envBaseUrl must resolve in template dictionary');
+    assert.strictEqual(details59.resolved['baseUrl'], 'https://api.production.com', 'baseUrl must resolve to environment baseUrl');
+
+    // In inherited inspector list:
+    // Collection section MUST have baseUrl, and MUST NOT have redundant duplicate collectionBaseUrl
+    const colInherited = details59.inherited.filter(i => i.source === 'collection');
+    const colBaseUrls = colInherited.filter(i => i.key === 'baseUrl');
+    const colCollectionBaseUrls = colInherited.filter(i => i.key === 'collectionBaseUrl');
+
+    assert.strictEqual(colBaseUrls.length, 1, 'Collection must have exactly 1 baseUrl entry');
+    assert.strictEqual(colCollectionBaseUrls.length, 0, 'Collection must NOT have redundant duplicate collectionBaseUrl in inherited list');
+
+    // Environment section MUST have baseUrl, and MUST NOT have redundant duplicate envBaseUrl
+    const envInherited = details59.inherited.filter(i => i.source === 'environment');
+    const envBaseUrls = envInherited.filter(i => i.key === 'baseUrl');
+    const envEnvBaseUrls = envInherited.filter(i => i.key === 'envBaseUrl');
+
+    assert.strictEqual(envBaseUrls.length, 1, 'Environment must have exactly 1 baseUrl entry');
+    assert.strictEqual(envEnvBaseUrls.length, 0, 'Environment must NOT have redundant duplicate envBaseUrl in inherited list');
+
+    console.log('✓ Collapsible Response Body Objects & Arrays, Cleaned CollectionBaseUrl verified');
+  }
+
+  console.log('\nAll 59 verification test suites passed successfully! 🎉');
   process.exit(0);
 })().catch(err => {
   console.error('Async test suite failure:', err);

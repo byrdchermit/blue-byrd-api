@@ -215,12 +215,6 @@ export class VariableService {
 
       if (collectionBaseUrl) {
         resolved['collectionBaseUrl'] = collectionBaseUrl;
-        inherited.push({
-          key: 'collectionBaseUrl',
-          value: collectionBaseUrl,
-          source: 'collection',
-          sourceName: `Collection: ${collection.name}`,
-        });
         if (baseUrlPreference !== 'none') {
           resolved['baseUrl'] = collectionBaseUrl;
           inherited.push({
@@ -319,12 +313,6 @@ export class VariableService {
       if (!env.baseUrlDisabled && env.baseUrl && env.baseUrl.trim()) {
         const val = env.baseUrl.trim().replace(/\/+$/, '');
         resolved['envBaseUrl'] = val;
-        inherited.push({
-          key: 'envBaseUrl',
-          value: val,
-          source: sourceKind,
-          sourceName: sourceLabel,
-        });
 
         if (baseUrlPreference === 'none') {
           // Base URL preference is disabled for this request
