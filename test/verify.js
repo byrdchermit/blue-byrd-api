@@ -3800,7 +3800,128 @@ console.log('✓ Request panel script integrity & syntax validation passed');
     console.log('✓ Collapsible Response Body Objects & Arrays, Cleaned CollectionBaseUrl & Fitted Tabs verified');
   }
 
-  console.log('\nAll 59 verification test suites passed successfully! 🎉');
+  // --- Suite 60: Shared / Global Configurable Scope, HTML Settings Panel & Universal Inheritance Cascade ---
+  {
+    const sm60 = new BlueByrdStateManager(mockContext);
+    const varService60 = new VariableService(sm60);
+    const authService60 = new AuthService(sm60);
+
+    // 1. State Manager default globalProfile and get/save/delete guards
+    const state60 = sm60.getState();
+    assert(state60.globalProfile, 'AppState must initialize default globalProfile');
+    assert.strictEqual(state60.globalProfile.id, 'global');
+    assert.strictEqual(state60.globalProfile.name, 'Shared / Global');
+
+    const globalProfById = sm60.getProfile('global');
+    const globalProfByName = sm60.getProfile('Shared / Global');
+    assert.deepStrictEqual(globalProfById, globalProfByName);
+    assert.strictEqual(globalProfById.id, 'global');
+
+    // Deleting 'global' must be rejected
+    const delResult = sm60.deleteProfile('global');
+    assert.strictEqual(delResult, false, 'deleteProfile("global") must return false and be protected');
+    assert.strictEqual(sm60.getProfile('global').id, 'global', 'globalProfile must persist despite delete attempt');
+
+    // Saving 'global' updates state.globalProfile
+    const updatedGlobal = {
+      id: 'global',
+      name: 'Shared / Global',
+      color: '#64748b',
+      notes: 'Universal org variables and root tokens',
+      variables: {
+        globalApiKey: 'secret-global-999',
+        sharedHost: 'api.enterprise.internal',
+        overrideMe: 'root-val'
+      },
+      headers: {
+        'X-Enterprise-Tenant': 'tenant-xyz',
+        'X-Correlation-Id': 'corr-root'
+      },
+      auth: {
+        type: 'bearer',
+        token: 'ey-universal-jwt'
+      }
+    };
+    sm60.saveProfile(updatedGlobal);
+    assert.strictEqual(sm60.getState().globalProfile.notes, 'Universal org variables and root tokens');
+    assert.strictEqual(sm60.getProfile('global').variables.globalApiKey, 'secret-global-999');
+
+    // 2. Settings Panel HTML rendering when currentProfileId === 'global'
+    const { getGlobalSettingsPanelHtml } = require('../dist/views/panels/globalSettingsPanelHtml');
+    const htmlGlobal = getGlobalSettingsPanelHtml(sm60.getState(), [], 'profiles', 'global');
+
+    assert(htmlGlobal.includes('id="prof-heading" style="font-size: 16px;">Shared / Global</h2>'), 'Settings panel must render Shared / Global heading');
+    assert(htmlGlobal.includes('global · Root scope (inherited by all profiles)'), 'Settings panel must render root scope subheading');
+    assert(htmlGlobal.includes('disabled title="Universal scope name is fixed"'), 'Settings panel must disable name field for global');
+    assert(htmlGlobal.includes('🌐 Universal Scope (Always Applied)'), 'Settings panel must show universal scope indicator badge');
+    assert(!htmlGlobal.includes('id="btn-activate-profile"'), 'Settings panel must not render activate button for global');
+    assert(htmlGlobal.includes('data-subtab="subtab-vars">Variables (3)</button>'), 'Settings panel must render 3 variables for global');
+    assert(htmlGlobal.includes('data-subtab="subtab-headers">Headers (2)</button>'), 'Settings panel must render 2 headers for global');
+    assert(!htmlGlobal.includes('data-subtab="subtab-guards"'), 'Settings panel must not render guards subtab for global');
+    assert(htmlGlobal.includes('<div class="profile-card selected" data-profile-id="global"'), 'Shared / Global profile card must be selected in sidebar');
+
+    // 3. Variable Inheritance Cascade: Shared / Global -> Profile -> Collection -> Environment
+    // Custom profile 'Development' overrides overrideMe
+    let devProf = sm60.getProfile('profile-dev') || sm60.getProfiles()[0];
+    if (!devProf) {
+      devProf = {
+        id: 'profile-dev',
+        name: 'Development',
+        color: '#10b981',
+        auth: { type: 'none' },
+        variables: {},
+        headers: {}
+      };
+      sm60.saveProfile(devProf);
+    }
+    devProf.variables = {
+      overrideMe: 'dev-val',
+      devOnlyVar: 'dev-exclusive'
+    };
+    sm60.saveProfile(devProf);
+
+    // Resolve for devProf.id
+    const varResolution = varService60.resolveVariablesDetailed(devProf.id);
+    assert.strictEqual(varResolution.resolved['globalApiKey'], 'secret-global-999', 'globalApiKey must inherit from Shared / Global');
+    assert.strictEqual(varResolution.resolved['sharedHost'], 'api.enterprise.internal', 'sharedHost must inherit from Shared / Global');
+    assert.strictEqual(varResolution.resolved['devOnlyVar'], 'dev-exclusive', 'devOnlyVar must resolve from profile');
+    assert.strictEqual(varResolution.resolved['overrideMe'], 'dev-val', 'overrideMe must be overridden by dev profile');
+
+    // Check inherited traceability
+    const globalVarInherited = varResolution.inherited.filter(i => i.sourceName === 'Shared / Global');
+    assert(globalVarInherited.length >= 3, 'Must have at least 3 variables from Shared / Global');
+    const rootOverrideMe = globalVarInherited.find(i => i.key === 'overrideMe');
+    assert(rootOverrideMe && rootOverrideMe.isOverridden, 'Shared / Global overrideMe must be marked isOverridden');
+
+    // 4. Header Inheritance Cascade: Shared / Global -> Profile
+    devProf.headers = {
+      'X-Correlation-Id': 'corr-dev-123',
+      'X-Dev-Header': 'dev-value'
+    };
+    sm60.saveProfile(devProf);
+
+    const headerResolution = varService60.resolveHeadersDetailed(undefined, undefined, undefined, {}, devProf.id);
+    assert.strictEqual(headerResolution.merged['X-Enterprise-Tenant'], 'tenant-xyz', 'X-Enterprise-Tenant must inherit from Shared / Global');
+    assert.strictEqual(headerResolution.merged['X-Correlation-Id'], 'corr-dev-123', 'X-Correlation-Id must be overridden by dev profile');
+    assert.strictEqual(headerResolution.merged['X-Dev-Header'], 'dev-value');
+
+    // 5. Auth Fallback Cascade: Profile none -> Global bearer
+    devProf.auth = { type: 'none' };
+    sm60.saveProfile(devProf);
+    const authHeaders1 = authService60.resolveAuthHeaders(devProf.id);
+    assert.strictEqual(authHeaders1['Authorization'], 'Bearer ey-universal-jwt', 'Profile with type none must fallback to Shared / Global bearer auth');
+
+    // Custom profile defines own auth (overrides Shared / Global)
+    devProf.auth = { type: 'apiKey', keyName: 'X-Dev-Key', token: 'dev-api-key' };
+    sm60.saveProfile(devProf);
+    const authHeaders2 = authService60.resolveAuthHeaders(devProf.id);
+    assert.strictEqual(authHeaders2['X-Dev-Key'], 'dev-api-key', 'Profile custom auth must override Shared / Global auth');
+    assert.strictEqual(authHeaders2['Authorization'], undefined, 'Shared / Global auth must not bleed when profile auth is active');
+
+    console.log('✓ Shared / Global Configurable Scope, HTML Settings Panel & Universal Inheritance Cascade verified');
+  }
+
+  console.log('\nAll 60 verification test suites passed successfully! 🎉');
   process.exit(0);
 })().catch(err => {
   console.error('Async test suite failure:', err);

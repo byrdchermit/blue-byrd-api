@@ -61,7 +61,7 @@ export class AuthService {
       } else if (auth.type === 'apiKey') {
         const tokenValue = auth.token?.trim() ?? '';
         if (!tokenValue) return;
-        const header = auth.headerName?.trim() || auth.keyName?.trim() || 'X-API-Key';
+        const header = (auth.headerName && auth.headerName !== 'Authorization' ? auth.headerName.trim() : undefined) || auth.keyName?.trim() || auth.headerName?.trim() || 'X-API-Key';
         merged[header] = tokenValue;
       } else if (auth.type === 'basic') {
         const header = auth.headerName?.trim() || 'Authorization';
@@ -108,6 +108,15 @@ export class AuthService {
     if (inheritProfile && profile?.auth && profile.auth.type !== 'none') {
       applyAuth(profile.auth);
       return merged;
+    }
+
+    // 5. Shared / Global profile level fallback
+    if (inheritProfile) {
+      const globalProfile = this.stateManager.getProfile('global');
+      if (globalProfile?.auth && globalProfile.auth.type !== 'none') {
+        applyAuth(globalProfile.auth);
+        return merged;
+      }
     }
 
     return merged;

@@ -257,6 +257,7 @@ export type AppState = {
   activeProfileId?: string;
   activeEnvironmentName?: string;
   settings?: AppSettings;
+  globalProfile?: Profile;
 };
 
 export type VariableSourceKind =

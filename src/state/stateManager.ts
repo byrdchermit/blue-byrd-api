@@ -163,6 +163,15 @@ export class BlueByrdStateManager {
       history: [],
       activeProfileId: 'profile-dev',
       activeEnvironmentName: 'Local',
+      globalProfile: {
+        id: 'global',
+        name: 'Shared / Global',
+        color: '#64748b',
+        auth: { type: 'none' },
+        variables: {},
+        headers: {},
+        notes: 'Variables & auth shared across all profiles',
+      },
     };
   }
 
@@ -170,7 +179,7 @@ export class BlueByrdStateManager {
     return {
       type: auth?.type === 'bearer' || auth?.type === 'apiKey' || auth?.type === 'oauth2' || auth?.type === 'basic' ? auth.type : 'none',
       token: auth?.token ?? '',
-      headerName: auth?.headerName ?? 'Authorization',
+      headerName: auth?.headerName ?? (auth?.type === 'apiKey' ? (auth?.keyName ?? 'X-API-Key') : 'Authorization'),
       keyName: auth?.keyName ?? 'X-API-Key',
       headerPrefix: auth?.headerPrefix ?? (auth?.type === 'bearer' || auth?.type === 'oauth2' ? 'Bearer' : ''),
       addTo: auth?.addTo ?? 'header',
@@ -370,6 +379,18 @@ export class BlueByrdStateManager {
     }
     const settings = value.settings || fallback.settings;
 
+    // Normalize globalProfile
+    const rawGlobal = value.globalProfile || fallback.globalProfile;
+    const globalProfile: Profile = {
+      id: 'global',
+      name: 'Shared / Global',
+      color: rawGlobal?.color || '#64748b',
+      auth: this.normalizeAuth(rawGlobal?.auth),
+      variables: rawGlobal?.variables || {},
+      headers: rawGlobal?.headers || {},
+      notes: rawGlobal?.notes || 'Variables & auth shared across all profiles',
+    };
+
     return {
       profiles,
       environments,
@@ -378,6 +399,7 @@ export class BlueByrdStateManager {
       activeProfileId,
       activeEnvironmentName,
       settings,
+      globalProfile,
     };
   }
 
@@ -456,6 +478,21 @@ export class BlueByrdStateManager {
 
   public getProfile(nameOrId?: string): Profile | undefined {
     if (!nameOrId) return undefined;
+    if (nameOrId === 'global' || nameOrId === 'Shared / Global') {
+      const state = this.getState();
+      if (!state.globalProfile) {
+        state.globalProfile = {
+          id: 'global',
+          name: 'Shared / Global',
+          color: '#64748b',
+          auth: { type: 'none' },
+          variables: {},
+          headers: {},
+          notes: 'Variables & auth shared across all profiles',
+        };
+      }
+      return state.globalProfile;
+    }
     const profiles = this.getState().profiles;
     return profiles.find((p) => p.id === nameOrId) || profiles.find((p) => p.name === nameOrId);
   }
@@ -486,6 +523,11 @@ export class BlueByrdStateManager {
 
   public saveProfile(profile: Profile): void {
     const state = this.getState();
+    if (profile.id === 'global' || profile.name === 'Shared / Global') {
+      state.globalProfile = profile;
+      this.save(state);
+      return;
+    }
     const index = profile.id
       ? state.profiles.findIndex((p) => p.id === profile.id)
       : state.profiles.findIndex((p) => p.name === profile.name);
@@ -498,6 +540,9 @@ export class BlueByrdStateManager {
   }
 
   public deleteProfile(nameOrId: string): boolean {
+    if (nameOrId === 'global' || nameOrId === 'Shared / Global') {
+      return false;
+    }
     const state = this.getState();
     const initialLen = state.profiles.length;
     const deletedProfile = state.profiles.find((p) => p.id === nameOrId || p.name === nameOrId);

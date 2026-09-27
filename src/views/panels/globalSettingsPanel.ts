@@ -145,6 +145,10 @@ export class BlueByrdGlobalSettingsPanel {
       }
     } else if (type === 'deleteProfile') {
       const targetId = message.profileId;
+      if (targetId === 'global') {
+        vscode.window.showWarningMessage('Cannot delete the Shared / Global scope.');
+        return;
+      }
       const state = this.stateManager.getState();
       if (state.profiles.length <= 1) {
         vscode.window.showWarningMessage('Cannot delete the last remaining profile.');
@@ -234,7 +238,23 @@ export class BlueByrdGlobalSettingsPanel {
       }
 
       // Save Profile details
-      if (payload.profileId && payload.profileId !== 'global') {
+      if (payload.profileId === 'global') {
+        if (!state.globalProfile) {
+          state.globalProfile = {
+            id: 'global',
+            name: 'Shared / Global',
+            color: '#64748b',
+            auth: { type: 'none' },
+            variables: {},
+            headers: {},
+            notes: 'Variables & auth shared across all profiles',
+          };
+        }
+        state.globalProfile.notes = payload.profileNotes || '';
+        state.globalProfile.variables = payload.variables || {};
+        state.globalProfile.headers = payload.headers || {};
+        state.globalProfile.auth = payload.auth || { type: 'none' };
+      } else if (payload.profileId) {
         const prof = state.profiles.find(p => p.id === payload.profileId);
         if (prof) {
           if (payload.profileName) prof.name = payload.profileName.trim();

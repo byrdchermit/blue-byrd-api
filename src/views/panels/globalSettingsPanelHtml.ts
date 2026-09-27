@@ -9,8 +9,21 @@ export function getGlobalSettingsPanelHtml(
 ): string {
   const activeProfileId = state.activeProfileId;
   const currentProfileId = selectedProfileId || activeProfileId || state.profiles[0]?.id || 'global';
-  const currentProfile = state.profiles.find((p) => p.id === currentProfileId) || state.profiles[0];
-  const currentProfColor = currentProfile?.color || '#3b82f6';
+  const isGlobalSelected = currentProfileId === 'global';
+  const globalProfFallback: Profile = state.globalProfile || {
+    id: 'global',
+    name: 'Shared / Global',
+    color: '#64748b',
+    auth: { type: 'none' },
+    variables: {},
+    headers: {},
+    notes: 'Variables & auth shared across all profiles',
+  };
+  const currentProfile = isGlobalSelected
+    ? globalProfFallback
+    : (state.profiles.find((p) => p.id === currentProfileId) || state.profiles[0] || globalProfFallback);
+  const isGlobal = currentProfile?.id === 'global';
+  const currentProfColor = isGlobal ? '#64748b' : (currentProfile?.color || '#3b82f6');
 
   const escapeHtml = (str: string | undefined | null): string => {
     if (!str) return '';
@@ -105,15 +118,15 @@ export function getGlobalSettingsPanelHtml(
 
   // Global / Shared profile card
   const isGlobalActive = !activeProfileId || activeProfileId === 'global' || activeProfileId === 'all';
-  const isGlobalSelected = currentProfileId === 'global';
   const globalCardHtml = `
-    <div class="profile-card ${isGlobalSelected ? 'selected' : ''}" data-profile-id="global">
+    <div class="profile-card ${isGlobalSelected ? 'selected' : ''}" data-profile-id="global" style="${isGlobalSelected ? 'border-left: 3px solid #64748b;' : ''}">
       <div class="profile-card-header">
+        <span class="profile-color-dot" style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #64748b; margin-right: 6px; flex-shrink: 0; box-shadow: 0 0 4px #64748b66;"></span>
         <span class="profile-radio ${isGlobalActive ? 'active' : ''}"></span>
         <span class="profile-name">Shared / Global</span>
         ${isGlobalActive ? '<span class="pill active-pill">Active</span>' : ''}
       </div>
-      <div class="profile-card-desc">Variables &amp; auth shared across all profiles</div>
+      <div class="profile-card-desc">${escapeHtml(state.globalProfile?.notes || 'Variables & auth shared across all profiles')}</div>
     </div>
   `;
 
@@ -644,13 +657,19 @@ export function getGlobalSettingsPanelHtml(
           <div class="profile-detail-actions">
             <div>
               <h2 id="prof-heading" style="font-size: 16px;">${escapeHtml(currentProfile?.name || 'Shared / Global')}</h2>
-              <span id="prof-subheading" style="font-size: 11px; color: var(--muted);">${currentProfile?.id || 'global'}</span>
+              <span id="prof-subheading" style="font-size: 11px; color: var(--muted);">${isGlobal ? 'global · Root scope (inherited by all profiles)' : (currentProfile?.id || 'global')}</span>
             </div>
             <div style="display: flex; gap: 8px; align-items: center;">
+              ${!isGlobal ? `
               <button id="btn-activate-profile" class="btn btn-success" ${currentProfile?.id === activeProfileId ? 'disabled' : ''}>
                 ${currentProfile?.id === activeProfileId ? '✔ Active Profile' : 'Set as Active'}
               </button>
-              ${currentProfile?.id !== 'global' && state.profiles.length > 1 ? '<button id="btn-delete-profile" class="btn btn-danger">Delete</button>' : ''}
+              ${state.profiles.length > 1 ? '<button id="btn-delete-profile" class="btn btn-danger">Delete</button>' : ''}
+              ` : `
+              <span class="pill" style="background: rgba(100, 116, 139, 0.2); color: #94a3b8; border: 1px solid rgba(100, 116, 139, 0.4); font-size: 11px; padding: 4px 8px;">
+                🌐 Universal Scope (Always Applied)
+              </span>
+              `}
             </div>
           </div>
 
@@ -659,15 +678,16 @@ export function getGlobalSettingsPanelHtml(
             <div style="display: flex; gap: 12px; flex-wrap: wrap;">
               <div class="form-group" style="flex: 2; min-width: 200px;">
                 <label>Profile Name</label>
-                <input id="prof-name-input" class="form-input" type="text" value="${escapeAttr(currentProfile?.name || '')}" ${currentProfile?.id === 'global' ? 'disabled' : ''} />
+                <input id="prof-name-input" class="form-input" type="text" value="${escapeAttr(currentProfile?.name || '')}" ${isGlobal ? 'disabled title="Universal scope name is fixed"' : ''} />
+                ${isGlobal ? '<span class="help-hint">Built-in universal scope. Variables, headers, and auth configured here apply across all profiles.</span>' : ''}
               </div>
               <div class="form-group" style="flex: 3; min-width: 260px;">
                 <label>Description / Notes</label>
-                <input id="prof-notes-input" class="form-input" type="text" placeholder="Workspace scope description" value="${escapeAttr(currentProfile?.notes || '')}" />
+                <input id="prof-notes-input" class="form-input" type="text" placeholder="${isGlobal ? 'Variables & auth shared across all profiles' : 'Workspace scope description'}" value="${escapeAttr(currentProfile?.notes || '')}" />
               </div>
             </div>
 
-            ${currentProfile?.id !== 'global' ? `
+            ${!isGlobal ? `
             <div class="form-group" style="margin-top: 12px;">
               <label style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                 <span>Color Theme</span>
@@ -696,7 +716,7 @@ export function getGlobalSettingsPanelHtml(
               <button class="subtab-btn active" data-subtab="subtab-vars">Variables (${Object.keys(profileVars).length})</button>
               <button class="subtab-btn" data-subtab="subtab-headers">Headers (${Object.keys(profileHeaders).length})</button>
               <button class="subtab-btn" data-subtab="subtab-auth">Default Auth</button>
-              <button class="subtab-btn" data-subtab="subtab-guards">🛡️ Safety Guards</button>
+              ${!isGlobal ? '<button class="subtab-btn" data-subtab="subtab-guards">🛡️ Safety Guards</button>' : ''}
             </div>
 
             <!-- Profile Variables Sub-tab -->
@@ -717,6 +737,7 @@ export function getGlobalSettingsPanelHtml(
             </div>
 
             <!-- Profile Safety Guards Sub-tab -->
+            ${!isGlobal ? `
             <div id="subtab-guards" class="subtab-content">
               <div style="font-size: 13px; font-weight: 600; margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
                 <span>🛡️ Touch Points &amp; Safety Warnings</span>
@@ -790,6 +811,7 @@ export function getGlobalSettingsPanelHtml(
 
               </div>
             </div>
+            ` : ''}
           </div>
         </div>
       </div>

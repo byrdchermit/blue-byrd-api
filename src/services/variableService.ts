@@ -172,12 +172,10 @@ export class VariableService {
       });
     });
 
-    // 1. Profile variables (global defaults)
-    const activePid = this.stateManager.getActiveProfileId();
-    const targetProfileId = (profileNameOrId && profileNameOrId !== 'all') ? profileNameOrId : (activePid !== 'all' ? activePid : undefined);
-    const profile = this.stateManager.getProfile(targetProfileId);
-    if (profile?.variables) {
-      Object.entries(profile.variables).forEach(([k, v]) => {
+    // 1a. Shared / Global profile variables (universal defaults)
+    const globalProfile = this.stateManager.getProfile('global');
+    if (globalProfile?.variables) {
+      Object.entries(globalProfile.variables).forEach(([k, v]) => {
         if (k && v !== undefined) {
           const val = String(v);
           resolved[k] = val;
@@ -185,10 +183,31 @@ export class VariableService {
             key: k,
             value: val,
             source: 'profile',
-            sourceName: `Profile: ${profile.name}`,
+            sourceName: 'Shared / Global',
           });
         }
       });
+    }
+
+    // 1b. Active/Target Profile variables (overrides Shared / Global)
+    const activePid = this.stateManager.getActiveProfileId();
+    const targetProfileId = (profileNameOrId && profileNameOrId !== 'all') ? profileNameOrId : (activePid !== 'all' ? activePid : undefined);
+    if (targetProfileId && targetProfileId !== 'global') {
+      const profile = this.stateManager.getProfile(targetProfileId);
+      if (profile?.variables) {
+        Object.entries(profile.variables).forEach(([k, v]) => {
+          if (k && v !== undefined) {
+            const val = String(v);
+            resolved[k] = val;
+            inherited.push({
+              key: k,
+              value: val,
+              source: 'profile',
+              sourceName: `Profile: ${profile.name}`,
+            });
+          }
+        });
+      }
     }
 
     // 2. Collection variables & dedicated collection baseUrl
@@ -474,22 +493,40 @@ export class VariableService {
       merged[key] = value;
     };
 
-    // 0. Profile headers (global profile defaults)
-    const activePid = this.stateManager.getActiveProfileId();
-    const targetProfileId = (profileNameOrId && profileNameOrId !== 'all') ? profileNameOrId : (activePid !== 'all' ? activePid : undefined);
-    const profile = this.stateManager.getProfile(targetProfileId);
-    if (profile?.headers) {
-      Object.entries(profile.headers).forEach(([k, v]) => {
+    // 0a. Shared / Global profile headers (universal defaults)
+    const globalProfile = this.stateManager.getProfile('global');
+    if (globalProfile?.headers) {
+      Object.entries(globalProfile.headers).forEach(([k, v]) => {
         if (k && v !== undefined) {
           setHeader(k, String(v));
           inherited.push({
             key: k,
             value: String(v),
             source: 'profile',
-            sourceName: `Profile: ${profile.name}`,
+            sourceName: 'Shared / Global',
           });
         }
       });
+    }
+
+    // 0b. Active/Target Profile headers (overrides Shared / Global)
+    const activePid = this.stateManager.getActiveProfileId();
+    const targetProfileId = (profileNameOrId && profileNameOrId !== 'all') ? profileNameOrId : (activePid !== 'all' ? activePid : undefined);
+    if (targetProfileId && targetProfileId !== 'global') {
+      const profile = this.stateManager.getProfile(targetProfileId);
+      if (profile?.headers) {
+        Object.entries(profile.headers).forEach(([k, v]) => {
+          if (k && v !== undefined) {
+            setHeader(k, String(v));
+            inherited.push({
+              key: k,
+              value: String(v),
+              source: 'profile',
+              sourceName: `Profile: ${profile.name}`,
+            });
+          }
+        });
+      }
     }
 
     // 1. Collection headers (collection defaults)
