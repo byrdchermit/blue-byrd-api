@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3.2] - 2026-09-27
+
+### Added
+- **Tab Dirty State Tracking & Live Unsaved Indicators**:
+  - Request panels now track edits across all inputs (URL, method, headers, variables, body, auth, notes, scripts).
+  - VS Code editor tab title dynamically displays `● Request Name` when modified and unsaved, cleanly reverting once saved.
+  - In-panel Save button shows dirty state with accent styling and `Save *` status.
+  - Added native <kbd>Ctrl</kbd> + <kbd>S</kbd> / <kbd>Cmd</kbd> + <kbd>S</kbd> keyboard shortcut to immediately save requests from within the panel.
+
+### Fixed
+- **Profile Settings Save Bug**:
+  - Fixed a `ReferenceError: currentActiveTab is not defined` in `globalSettingsPanelHtml.ts` that silently blocked the *Save Changes* button from saving profile modifications.
+  - Added instant visual feedback to *Save Changes* button ("Saving...", "✔ Saved!").
+  - Preserved `selectedProfileId` on save so the settings view stays on the selected profile without jumping.
+- **Activity Bar Icon Cache Invalidation**:
+  - Re-registered Activity Bar icon as `media/byrdsnest-icon.svg` to cleanly bust stale Chromium image caches.
+
+---
+
 ## [0.3.1] - 2026-09-27
 
 ### Added

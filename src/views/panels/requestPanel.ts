@@ -21,6 +21,8 @@ export class BlueByrdPanel {
   private readonly tokenService?: TokenService;
   private readonly panelKey: string;
   private disposables: vscode.Disposable[] = [];
+  private baseTitle: string = 'New Request';
+  private isDirty: boolean = false;
 
   public static createOrShow(
     extensionUri: vscode.Uri,
@@ -144,13 +146,18 @@ export class BlueByrdPanel {
     this.panels.forEach((p) => {
       const id = p.initialContext?.requestId || p.initialContext?.id || p.panelKey;
       if (id === requestId) {
-        p.panel.title = newName;
+        p.baseTitle = newName;
+        p.updatePanelTitle();
         if (p.initialContext) {
           p.initialContext.requestName = newName;
         }
         p.panel.webview.postMessage({ type: 'requestRenamed', requestId, name: newName });
       }
     });
+  }
+
+  private updatePanelTitle(): void {
+    this.panel.title = this.isDirty ? `● ${this.baseTitle}` : this.baseTitle;
   }
 
   private readonly initialContext: RequestContext;
@@ -175,6 +182,7 @@ export class BlueByrdPanel {
     this.authService = authService;
     this.panelKey = panelKey;
     this.tokenService = tokenService;
+    this.baseTitle = panel.title || 'New Request';
 
     // Listen for state changes to live-update inherited headers and variables across open panels
     this.disposables.push(
@@ -245,7 +253,10 @@ export class BlueByrdPanel {
     this.panel.webview.onDidReceiveMessage(
       async (message) => {
         try {
-          if (message.type === 'sendRequest') {
+          if (message.type === 'dirtyStateChanged') {
+            this.isDirty = !!message.isDirty;
+            this.updatePanelTitle();
+          } else if (message.type === 'sendRequest') {
             const payload = message.payload;
 
             // Check Safety Guards for active/assigned Profile
@@ -317,7 +328,9 @@ export class BlueByrdPanel {
             const saved = this.stateManager.saveRequest(savedItem, payload.collection, payload.folder);
 
             // Update panel title and internal context
-            this.panel.title = saved.name;
+            this.baseTitle = saved.name;
+            this.isDirty = false;
+            this.updatePanelTitle();
             if (this.initialContext) {
               this.initialContext.requestName = saved.name;
               this.initialContext.id = saved.id;
@@ -332,7 +345,8 @@ export class BlueByrdPanel {
             const { requestId, newName } = message.payload || {};
             if (newName && typeof newName === 'string' && newName.trim()) {
               const trimmed = newName.trim();
-              this.panel.title = trimmed;
+              this.baseTitle = trimmed;
+              this.updatePanelTitle();
               if (this.initialContext) {
                 this.initialContext.requestName = trimmed;
               }

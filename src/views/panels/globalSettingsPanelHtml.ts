@@ -923,6 +923,7 @@ export function getGlobalSettingsPanelHtml(
     (function() {
       const vscode = acquireVsCodeApi();
       let currentProfId = "${escapeAttr(currentProfile?.id || 'global')}";
+      let currentActiveTab = "${escapeAttr(initialTab || 'profiles')}";
       let initialVars = ${JSON.stringify(profileVars)};
       let initialHeaders = ${JSON.stringify(profileHeaders)};
 
@@ -934,6 +935,8 @@ export function getGlobalSettingsPanelHtml(
           item.classList.add('active');
           const page = document.getElementById(item.getAttribute('data-tab'));
           if (page) page.classList.add('active');
+          const rawTab = (item.getAttribute('data-tab') || '').replace(/^tab-/, '');
+          if (rawTab) currentActiveTab = rawTab;
         });
       });
 
@@ -1206,6 +1209,29 @@ export function getGlobalSettingsPanelHtml(
             }
           }
         });
+
+        const btnSave = document.getElementById('btn-save-all');
+        if (btnSave) {
+          btnSave.textContent = 'Saving...';
+          btnSave.disabled = true;
+        }
+      });
+
+      // Handle messages from extension host
+      window.addEventListener('message', (event) => {
+        const msg = event.data;
+        if (msg && msg.type === 'settingsSaved') {
+          const btnSave = document.getElementById('btn-save-all');
+          if (btnSave) {
+            btnSave.textContent = '✔ Saved!';
+            btnSave.style.background = 'var(--success, #10b981)';
+            setTimeout(() => {
+              btnSave.textContent = 'Save Changes';
+              btnSave.style.background = '';
+              btnSave.disabled = false;
+            }, 1200);
+          }
+        }
       });
 
       const selectActiveEnv = document.getElementById('select-active-env');

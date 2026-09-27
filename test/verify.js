@@ -2288,7 +2288,7 @@ console.log('✓ Request panel script integrity & syntax validation passed');
     // Verify Check for Updates description displays current installed version
     const updateToolItem = toolItems.find(t => t.label === 'Check for Updates...');
     assert(updateToolItem, 'Check for Updates tool item must exist');
-    assert.strictEqual(updateToolItem.description, 'v0.3.1', 'Check for Updates description must match current version v0.3.1');
+    assert.strictEqual(updateToolItem.description, 'v0.3.2', 'Check for Updates description must match current version v0.3.2');
 
     // Verify coordinator compatibility
     const coordinator43 = new BlueByrdTreeCoordinator(
@@ -3687,11 +3687,47 @@ console.log('✓ Request panel script integrity & syntax validation passed');
     console.log('✓ URL Preview Variable Resolution Parity & Collection Base URL Fallback verified');
   }
 
-  console.log('\nAll 57 verification test suites passed successfully! 🎉');
+  // Test 58: Profile Settings Persistence, Dirty Tab Tracking & Activity Bar Icon
+  {
+    // 1. Verify globalSettingsPanelHtml.ts script integrity
+    const settingsHtmlFile = fs.readFileSync(path.join(__dirname, '../src/views/panels/globalSettingsPanelHtml.ts'), 'utf8');
+    assert(settingsHtmlFile.includes('let currentActiveTab ='), 'currentActiveTab must be explicitly declared to prevent ReferenceError');
+    assert(settingsHtmlFile.includes('settingsSaved'), 'settingsSaved message handler must be implemented for save confirmation');
+    assert(settingsHtmlFile.includes('btnSave.textContent = \'Saving...\''), 'Save button must show Saving... feedback');
+
+    // 2. Verify globalSettingsPanel.ts saveSettings persistence logic
+    const settingsPanelFile = fs.readFileSync(path.join(__dirname, '../src/views/panels/globalSettingsPanel.ts'), 'utf8');
+    assert(settingsPanelFile.includes('this.selectedProfileId = payload.profileId;'), 'selectedProfileId must be preserved across saves');
+    assert(settingsPanelFile.includes('settingsSaved'), 'Must notify webview with settingsSaved message on successful save');
+
+    // 3. Verify requestPanel.ts dirty tracking & title management
+    const reqPanelFile = fs.readFileSync(path.join(__dirname, '../src/views/panels/requestPanel.ts'), 'utf8');
+    assert(reqPanelFile.includes('private isDirty: boolean = false;'), 'BlueByrdPanel must track isDirty property');
+    assert(reqPanelFile.includes('this.isDirty ? `● ${this.baseTitle}` : this.baseTitle'), 'Panel title must display dirty dot ● when modified');
+    assert(reqPanelFile.includes('dirtyStateChanged'), 'BlueByrdPanel must handle dirtyStateChanged message from webview');
+
+    // 4. Verify requestPanelHtml.ts dirty snapshot & Ctrl+S shortcut
+    const reqHtmlFile = fs.readFileSync(path.join(__dirname, '../src/views/panels/requestPanelHtml.ts'), 'utf8');
+    assert(reqHtmlFile.includes('captureDirtySnapshot'), 'requestPanelHtml must implement captureDirtySnapshot');
+    assert(reqHtmlFile.includes('checkDirtyState'), 'requestPanelHtml must implement checkDirtyState');
+    assert(reqHtmlFile.includes('#btn-save.dirty'), 'CSS must define #btn-save.dirty styles');
+    assert(reqHtmlFile.includes("e.key === 's' || e.key === 'S'"), 'Ctrl+S / Cmd+S must trigger save action');
+
+    // 5. Verify Activity Bar icon configuration & files
+    const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '../package.json'), 'utf8'));
+    const actIcon = pkg.contributes.viewsContainers.activitybar[0].icon;
+    assert.strictEqual(actIcon, 'media/byrdsnest-icon.svg', 'Activity bar icon must point to media/byrdsnest-icon.svg');
+    assert(fs.existsSync(path.join(__dirname, '..', actIcon)), 'byrdsnest-icon.svg must exist on disk');
+
+    console.log('✓ Profile Settings Persistence, Dirty Tab Tracking & Activity Bar Icon verified');
+  }
+
+  console.log('\nAll 58 verification test suites passed successfully! 🎉');
   process.exit(0);
 })().catch(err => {
   console.error('Async test suite failure:', err);
   process.exit(1);
 });
+
 
 

@@ -229,6 +229,9 @@ export class BlueByrdGlobalSettingsPanel {
       if (payload.activeTab) {
         this.activeTab = payload.activeTab;
       }
+      if (payload.profileId) {
+        this.selectedProfileId = payload.profileId;
+      }
 
       // Save Profile details
       if (payload.profileId && payload.profileId !== 'global') {
@@ -255,6 +258,7 @@ export class BlueByrdGlobalSettingsPanel {
       BlueByrdPanel.broadcastStateUpdated(state);
       vscode.commands.executeCommand('byrdsnestApiClient.refreshExplorer');
       vscode.window.showInformationMessage('Settings saved successfully.');
+      this.panel.webview.postMessage({ type: 'settingsSaved' });
       this.refresh();
     }
   }

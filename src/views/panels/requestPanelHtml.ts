@@ -431,6 +431,13 @@ export function getRequestPanelHtml(
       color: var(--text);
     }
     .btn-secondary:hover { background: rgba(255,255,255,0.06); }
+    #btn-save.dirty {
+      border-color: #f59e0b;
+      color: #ffffff;
+      background: rgba(245, 158, 11, 0.18);
+      font-weight: 600;
+      box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.4);
+    }
 
     .btn-group {
       display: inline-flex;
@@ -4013,6 +4020,11 @@ export function getRequestPanelHtml(
           lastSavedName = msg.name;
           autoResizeInput(reqNameInput);
         }
+        baselineDirtySnapshot = captureDirtySnapshot();
+        isCurrentlyDirty = false;
+        updateDirtyUi(false);
+        vscode.postMessage({ type: 'dirtyStateChanged', isDirty: false });
+
         const statusPill = document.getElementById('resp-status');
         statusPill.textContent = 'Saved';
         statusPill.className = 'pill status-2xx';
@@ -4280,6 +4292,7 @@ export function getRequestPanelHtml(
       const prev = undoStack.pop();
       if (lastRecordedSnapshot) redoStack.push(lastRecordedSnapshot);
       restoreSnapshot(prev);
+      safeSetTimeout(checkDirtyState, 10);
       return true;
     }
 
@@ -4288,22 +4301,98 @@ export function getRequestPanelHtml(
       const next = redoStack.pop();
       if (lastRecordedSnapshot) undoStack.push(lastRecordedSnapshot);
       restoreSnapshot(next);
+      safeSetTimeout(checkDirtyState, 10);
       return true;
     }
+
+    // ==========================================
+    // Dirty State Tracking & Ctrl+S Shortcut
+    // ==========================================
+    const safeSetTimeout = typeof setTimeout !== 'undefined' ? setTimeout : (fn) => { try { fn(); } catch (_) {} };
+    let baselineDirtySnapshot = null;
+    let isCurrentlyDirty = false;
+
+    function captureDirtySnapshot() {
+      try {
+        const p = getPayload();
+        return JSON.stringify({
+          name: p.requestName,
+          method: p.method,
+          url: p.url,
+          profile: p.profile,
+          environment: p.environment,
+          baseUrlPreference: p.baseUrlPreference,
+          headers: p.headers,
+          body: p.body,
+          bodyType: p.bodyType,
+          bodyFormData: p.bodyFormData,
+          variables: p.variables,
+          auth: p.auth,
+          notes: p.notes,
+          preRequestScript: p.preRequestScript,
+          postResponseScript: p.postResponseScript,
+        });
+      } catch (_) {
+        return '';
+      }
+    }
+
+    function updateDirtyUi(dirty) {
+      const btnSave = document.getElementById('btn-save');
+      if (btnSave) {
+        if (dirty) {
+          btnSave.classList.add('dirty');
+          btnSave.textContent = 'Save *';
+        } else {
+          btnSave.classList.remove('dirty');
+          btnSave.textContent = 'Save';
+        }
+      }
+    }
+
+    function checkDirtyState() {
+      if (baselineDirtySnapshot === null) return;
+      const current = captureDirtySnapshot();
+      const dirty = current !== baselineDirtySnapshot;
+      if (dirty !== isCurrentlyDirty) {
+        isCurrentlyDirty = dirty;
+        updateDirtyUi(dirty);
+        vscode.postMessage({ type: 'dirtyStateChanged', isDirty: dirty });
+      }
+    }
+
+    safeSetTimeout(() => {
+      baselineDirtySnapshot = captureDirtySnapshot();
+    }, 150);
 
     // Initialize baseline snapshot
     lastRecordedSnapshot = captureCurrentState();
 
-    // Listen globally for edits to schedule snapshots
+    // Listen globally for edits to schedule snapshots and check dirty state
     document.addEventListener('input', () => {
-      if (!isUndoingOrRedoing) recordUndoSnapshot(false);
+      if (!isUndoingOrRedoing) {
+        recordUndoSnapshot(false);
+        checkDirtyState();
+      }
     }, true);
     document.addEventListener('change', () => {
-      if (!isUndoingOrRedoing) recordUndoSnapshot(false);
+      if (!isUndoingOrRedoing) {
+        recordUndoSnapshot(false);
+        checkDirtyState();
+      }
     }, true);
 
-    // Intercept Ctrl+Z and Ctrl+Y in capture phase so VS Code cannot steal them
+    // Intercept Ctrl+S, Ctrl+Z, and Ctrl+Y in capture phase
     window.addEventListener('keydown', (e) => {
+      const isS = e.key === 's' || e.key === 'S';
+      if ((e.ctrlKey || e.metaKey) && isS) {
+        e.preventDefault();
+        e.stopPropagation();
+        const btnSave = document.getElementById('btn-save');
+        if (btnSave) btnSave.click();
+        return;
+      }
+
       const isZ = e.key === 'z' || e.key === 'Z';
       const isY = e.key === 'y' || e.key === 'Y';
       if ((e.ctrlKey || e.metaKey) && (isZ || isY)) {
