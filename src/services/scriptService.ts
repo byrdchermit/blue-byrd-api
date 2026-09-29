@@ -141,8 +141,13 @@ export class ScriptService {
     };
 
     const sandbox = this.createBaseSandbox(consoleLogs);
+    sandbox.bn = bbContext;
     sandbox.bb = bbContext;
     sandbox.pm = bbContext;
+    sandbox.request = reqObj;
+    sandbox.environment = envStore;
+    sandbox.collectionVariables = colStore;
+    sandbox.variables = varStore;
 
     let scriptError: string | undefined;
     try {
@@ -328,9 +333,16 @@ export class ScriptService {
     };
 
     const sandbox = this.createBaseSandbox(consoleLogs);
+    sandbox.bn = bbContext;
     sandbox.bb = bbContext;
     sandbox.pm = bbContext;
+    sandbox.test = testFn;
     sandbox.expect = expectFn;
+    sandbox.response = respObj;
+    sandbox.request = reqObj;
+    sandbox.environment = envStore;
+    sandbox.collectionVariables = colStore;
+    sandbox.variables = varStore;
 
     let scriptError: string | undefined;
     try {

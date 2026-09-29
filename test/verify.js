@@ -3921,7 +3921,117 @@ console.log('✓ Request panel script integrity & syntax validation passed');
     console.log('✓ Shared / Global Configurable Scope, HTML Settings Panel & Universal Inheritance Cascade verified');
   }
 
-  console.log('\nAll 60 verification test suites passed successfully! 🎉');
+  // --- Suite 61: bn Namespace & Prefix-Free Direct Globals (test, expect, response, request, environment) ---
+  {
+    const { ScriptService } = require('../dist/services/scriptService');
+    const scriptService = new ScriptService();
+
+    // 1. Pre-Request script using bn namespace
+    const preResBn = scriptService.executePreRequest(
+      `
+      bn.request.headers['X-Bn-Test'] = 'ByrdsNest-Namespace';
+      bn.environment.set('bnKey', 'bnVal');
+      `,
+      {
+        url: 'https://api.example.com',
+        method: 'GET',
+        headers: {},
+        environmentVariables: {},
+        collectionVariables: {},
+        resolvedVariables: {}
+      }
+    );
+    assert.strictEqual(preResBn.headers['X-Bn-Test'], 'ByrdsNest-Namespace');
+    assert.strictEqual(preResBn.envMutations['bnKey'], 'bnVal');
+
+    // 2. Pre-Request script using prefix-free direct globals (request, environment)
+    const preResDirect = scriptService.executePreRequest(
+      `
+      request.headers['X-Direct-Test'] = 'PrefixFree';
+      environment.set('directKey', 'directVal');
+      `,
+      {
+        url: 'https://api.example.com',
+        method: 'GET',
+        headers: {},
+        environmentVariables: {},
+        collectionVariables: {},
+        resolvedVariables: {}
+      }
+    );
+    assert.strictEqual(preResDirect.headers['X-Direct-Test'], 'PrefixFree');
+    assert.strictEqual(preResDirect.envMutations['directKey'], 'directVal');
+
+    // 3. Post-Response script using bn namespace
+    const postResBn = scriptService.executePostResponse(
+      `
+      bn.test('bn status check', () => {
+        bn.expect(bn.response.status).toBe(200);
+      });
+      const data = bn.response.json();
+      bn.environment.set('receivedToken', data.token);
+      `,
+      {
+        url: 'https://api.example.com',
+        method: 'GET',
+        requestHeaders: {},
+        status: 200,
+        statusText: 'OK',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token: 'nest-jwt-123' }),
+        elapsedMs: 45,
+        environmentVariables: {},
+        collectionVariables: {},
+        resolvedVariables: {}
+      }
+    );
+    assert.strictEqual(postResBn.testResults.length, 1);
+    assert.strictEqual(postResBn.testResults[0].passed, true);
+    assert.strictEqual(postResBn.envMutations['receivedToken'], 'nest-jwt-123');
+
+    // 4. Post-Response script using prefix-free direct globals (test, expect, response, environment)
+    const postResDirect = scriptService.executePostResponse(
+      `
+      test('direct status check', () => {
+        expect(response.status).toBe(200);
+        expect(response.responseTime).toBe(45);
+      });
+      const data = response.json();
+      environment.set('cleanToken', data.token);
+      `,
+      {
+        url: 'https://api.example.com',
+        method: 'GET',
+        requestHeaders: {},
+        status: 200,
+        statusText: 'OK',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token: 'clean-jwt-456' }),
+        elapsedMs: 45,
+        environmentVariables: {},
+        collectionVariables: {},
+        resolvedVariables: {}
+      }
+    );
+    assert.strictEqual(postResDirect.testResults.length, 1);
+    assert.strictEqual(postResDirect.testResults[0].passed, true);
+    assert.strictEqual(postResDirect.envMutations['cleanToken'], 'clean-jwt-456');
+
+    // 5. Verify UI template includes bn and prefix-free hints
+    const { getRequestPanelHtml } = require('../dist/views/panels/requestPanelHtml');
+    const mockState = new BlueByrdStateManager(mockContext).getState();
+    const mockReq = (mockState.collections[0]?.requests && mockState.collections[0].requests[0]) ||
+                    (mockState.collections[0]?.folders && mockState.collections[0].folders[0]?.requests[0]) ||
+                    { id: 'req-1', name: 'Test Request', method: 'GET', url: 'https://api.example.com', headers: {} };
+    const htmlReq = getRequestPanelHtml(mockReq, mockState);
+    assert(htmlReq.includes('Access globals: <code style="color:#4ec9b0;">bn</code>'), 'UI must mention bn');
+    assert(htmlReq.includes('direct (<code style="color:#4ec9b0;">test</code>'), 'UI must mention direct globals');
+    assert(htmlReq.includes('test("Status code is 200"'), 'Snippet must use direct test()');
+
+    console.log('✓ bn Namespace & Prefix-Free Direct Globals (test, expect, response, request, environment) verified');
+  }
+
+  console.log('\nAll 61 verification test suites passed successfully! 🎉');
   process.exit(0);
 })().catch(err => {
   console.error('Async test suite failure:', err);

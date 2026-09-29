@@ -1905,7 +1905,7 @@ export function getRequestPanelHtml(
               <button type="button" class="subtab-btn script-type-btn" data-script-view="post">Post-Response Script (Tests)</button>
             </div>
             <div class="subtab-meta">
-              Access globals: <code style="color:#4ec9b0;">bb</code> &amp; <code style="color:#4ec9b0;">pm</code>
+              Access globals: <code style="color:#4ec9b0;">bn</code>, <code style="color:#4ec9b0;">pm</code>, or direct (<code style="color:#4ec9b0;">test</code>, <code style="color:#4ec9b0;">expect</code>, <code style="color:#4ec9b0;">response</code>)
             </div>
           </div>
 
@@ -1922,16 +1922,16 @@ export function getRequestPanelHtml(
 
           <div id="script-view-pre" class="script-subview" style="display: flex;">
             <div style="font-size:11px; color:var(--muted); margin-bottom:6px; flex-shrink: 0;">
-              Runs before sending. Mutate <code>bb.request.headers</code>, <code>bb.request.body</code>, or set variables.
+              Runs before sending. Mutate <code>request.headers</code>, <code>request.body</code>, or set variables with <code>environment.set()</code> / <code>bn.environment.set()</code>.
             </div>
-            <textarea id="req-pre-script" class="textarea-box" placeholder="// Example: set dynamic timestamp or signature&#10;bb.request.headers['X-Timestamp'] = Date.now().toString();&#10;bb.environment.set('reqId', crypto.randomUUID());">${escapeHtml(context.preRequestScript || '')}</textarea>
+            <textarea id="req-pre-script" class="textarea-box" placeholder="// Example: set dynamic timestamp or signature&#10;request.headers['X-Timestamp'] = Date.now().toString();&#10;environment.set('reqId', crypto.randomUUID());&#10;// Or namespace: bn.request.headers / bn.environment.set">${escapeHtml(context.preRequestScript || '')}</textarea>
           </div>
 
           <div id="script-view-post" class="script-subview" style="display: none;">
             <div style="font-size:11px; color:var(--muted); margin-bottom:6px; flex-shrink: 0;">
-              Runs after response. Assert tests with <code>bb.test()</code> and <code>bb.expect()</code>, or store tokens with <code>bb.environment.set()</code>.
+              Runs after response. Assert tests with <code>test()</code> / <code>bn.test()</code> and <code>expect()</code>, or store tokens with <code>environment.set()</code> / <code>bn.environment.set()</code>.
             </div>
-            <textarea id="req-post-script" class="textarea-box" placeholder="// Example: assert status 200 and store token&#10;bb.test('Status is 200', () => {&#10;  bb.expect(bb.response.status).toBe(200);&#10;});&#10;&#10;const data = bb.response.json();&#10;if (data.token) {&#10;  bb.environment.set('authToken', data.token);&#10;}">${escapeHtml(context.postResponseScript || '')}</textarea>
+            <textarea id="req-post-script" class="textarea-box" placeholder="// Example: assert status 200 and store token&#10;test('Status is 200', () => {&#10;  expect(response.status).toBe(200);&#10;});&#10;&#10;const data = response.json();&#10;if (data.token) {&#10;  environment.set('authToken', data.token);&#10;}">${escapeHtml(context.postResponseScript || '')}</textarea>
           </div>
         </div>
 
@@ -1982,7 +1982,7 @@ export function getRequestPanelHtml(
 
         <div id="tab-resp-tests" class="tab-content">
           <div id="test-results-container" style="display:flex; flex-direction:column; gap:6px; padding:10px;">
-            <div style="color: var(--muted); font-size:12px;">No tests executed yet. Add test assertions in the <strong>Scripts &rarr; Post-Response Script</strong> tab using <code>bb.test(...)</code>.</div>
+            <div style="color: var(--muted); font-size:12px;">No tests executed yet. Add test assertions in the <strong>Scripts &rarr; Post-Response Script</strong> tab using <code>test(...)</code> or <code>bn.test(...)</code>.</div>
           </div>
         </div>
 
@@ -2066,19 +2066,19 @@ export function getRequestPanelHtml(
         let snippetCode = '';
         switch (snippetType) {
           case 'set-env':
-            snippetCode = 'bb.environment.set("myKey", "myValue");\\n';
+            snippetCode = 'environment.set("myKey", "myValue");\\n';
             break;
           case 'get-env':
-            snippetCode = 'const val = bb.environment.get("myKey");\\nconsole.log("Got value:", val);\\n';
+            snippetCode = 'const val = environment.get("myKey");\\nconsole.log("Got value:", val);\\n';
             break;
           case 'status-200':
-            snippetCode = 'bb.test("Status code is 200", () => {\\n  bb.expect(bb.response.status).toBe(200);\\n});\\n';
+            snippetCode = 'test("Status code is 200", () => {\\n  expect(response.status).toBe(200);\\n});\\n';
             break;
           case 'parse-json':
-            snippetCode = 'const data = bb.response.json();\\nconsole.log("Response payload:", data);\\n';
+            snippetCode = 'const data = response.json();\\nconsole.log("Response payload:", data);\\n';
             break;
           case 'set-header':
-            snippetCode = 'bb.request.headers["X-Custom-Header"] = "CustomValue";\\n';
+            snippetCode = 'request.headers["X-Custom-Header"] = "CustomValue";\\n';
             break;
           case 'hash-sha256':
             snippetCode = 'const hash = crypto.createHash("sha256").update("myMessage").digest("hex");\\nconsole.log("SHA-256:", hash);\\n';
@@ -4281,7 +4281,7 @@ export function getRequestPanelHtml(
             });
           } else {
             if (testBadge) testBadge.style.display = 'none';
-            testsContainer.innerHTML = '<div style="color: var(--muted); font-size:12px;">No tests executed for this request. Add assertions in the <strong>Scripts &rarr; Post-Response Script</strong> tab using <code>bb.test(...)</code>.</div>';
+            testsContainer.innerHTML = '<div style="color: var(--muted); font-size:12px;">No tests executed for this request. Add assertions in the <strong>Scripts &rarr; Post-Response Script</strong> tab using <code>test(...)</code> or <code>bn.test(...)</code>.</div>';
           }
         }
 
